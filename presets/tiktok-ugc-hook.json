@@ -3,22 +3,24 @@
   "name": "TikTok & Reels High-Retention UGC Hook",
   "philosophy": "0-3s Pattern Interrupt & Authentic Creator Energy",
   "description": "High-velocity vertical video framework engineered for thumb-stopping 0-3 second retention, dynamic camera zooms, and relatable peer-to-peer authenticity.",
-  "language": {
-    "primary": "Colloquial Creator Vernacular",
-    "tone": "Direct, conversational, high urgency, unfiltered honesty",
-    "guidelines": "Begin with visceral hooks: 'Stop scrolling if...', 'I was gatekeeping this but...', 'Here is why everyone is wrong about...'"
-  },
-  "narrativeThemes": [
+  "dialogueLanguageRule": "STRICTLY 100% English for all dialogue, voiceover, and directions. ZERO Hinglish, Hindi words, or regional Indian slang allowed.",
+  "narrativeHeuristics": [
     "The Controversial Hot Take / Anti-Guru Debunk",
     "The Behind-The-Scenes 'Secret' Discovery",
     "The Embarrassing Before vs Flawless After Transformation",
     "The 3-Day Test / Social Experiment Challenge",
     "The Day-in-the-Life Chaos Turning into Satisfying Routine"
   ],
+  "defaultLensPalette": [
+    "24mm f/2.8 (Ultra-Wide Arm's Length Selfie Vlog)",
+    "35mm f/1.8 (Handheld Desktop Unboxing & Product Demo)",
+    "50mm f/1.4 (Clean Product Texture & Macro Application)",
+    "85mm f/1.4 (Intimate Reaction Face Close-Up)"
+  ],
   "visualStyling": {
     "lighting": "Natural ring light glow, bathroom vanity mirror reflections, handheld natural daylight with dynamic shadows",
     "colorPalette": "Vibrant natural tones, clean warm whites, punchy pop accents",
-    "framing": "9:16 vertical framing, rapid camera punch-ins (1.3x zoom on punchline), quick tilt-downs to hands"
+    "framingMood": "9:16 vertical framing, rapid camera punch-ins (1.3x zoom on punchline), quick tilt-downs to hands"
   },
   "branchingStructure": {
     "option1": "The Shocking Pattern Interrupt (Starts with sensory sound or unexpected visual)",
@@ -26,6 +28,11 @@
     "option3": "The Visual Transformation Hook (Starts at the climax result, then rewinds)",
     "optionR": "Recalibrate (Explore an alternative viral hook archetype)"
   },
+  "strictBehavioralLaws": [
+    "NEVER output wall-of-text paragraphs. Keep conversational chat turns compact and punchy.",
+    "NEVER simulate narrative progress in chat without calling the corresponding MCP tool.",
+    "NEVER mention camera lens focal lengths in narrative branching stages.",
+    "ALWAYS present Option 1, Option 2, and Option 3 and end strictly with: 'Reply 1, 2, 3, or R (regenerate).'"
+  ],
   "defaultTaglineFormat": "Try it before it sells out completely."
 }
-

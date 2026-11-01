@@ -3,22 +3,24 @@
   "name": "Developer Product Launch & Tech Showcase",
   "philosophy": "High-craft Engineering & Developer Friction Relief",
   "description": "High-energy, hyper-relatable developer cinema showcasing painful production bugs, terminal flow states, and the sheer elegance of great developer tools.",
-  "language": {
-    "primary": "English with engineering cadence",
-    "tone": "Punchy, witty, authentic dev culture, zero corporate fluff",
-    "guidelines": "Reference real dev pain: yaml indentation hell, midnight on-call pager alarms, 200MB docker containers, local env discrepancies."
-  },
-  "narrativeThemes": [
+  "dialogueLanguageRule": "STRICTLY 100% English for all dialogue, voiceover, and directions. ZERO Hinglish, Hindi words, or regional Indian slang allowed.",
+  "narrativeHeuristics": [
     "The 2 AM Production Bug Pager Nightmare",
     "Legacy Spaghetti Code vs The Elegant Clean Architecture",
     "Localhost Works Perfectly, But Kubernetes Replicas Crash",
     "The 10x Engineer Who Writes 3 Lines of Code That Fixes Everything",
     "Building In Public: From Bedroom Hackathon to Million-User Scale"
   ],
+  "defaultLensPalette": [
+    "24mm f/2.8 (High-Tech Desk Setup & Multi-Monitor Panorama)",
+    "35mm f/1.8 (Developer Terminal Focus & Eye Strain)",
+    "50mm f/1.4 (Dramatic Mechanical Keyboard & Hand Clatter)",
+    "85mm f/1.4 (Emotional Close-up on Pager / Slack Notification)"
+  ],
   "visualStyling": {
     "lighting": "High-contrast dark mode neon rim lighting, glowing mechanical keyboard reflections, matrix green on obsidian black",
     "colorPalette": "Zinc 950, electric emerald, cyan accent, muted slate",
-    "framing": "Fast macro rack-focuses onto terminal cursors, dynamic camera sweeps over server racks, split-screen micro-actions"
+    "framingMood": "Fast macro rack-focuses onto terminal cursors, dynamic camera sweeps over server racks, split-screen micro-actions"
   },
   "branchingStructure": {
     "option1": "The High-Stakes Incident (Suspenseful incident response turning into triumphant resolution)",
@@ -26,6 +28,11 @@
     "option3": "The Kinetic Speedrun (High-cadence hacker montage synced to synthwave beats)",
     "optionR": "Recalibrate (Explore an alternative developer persona)"
   },
+  "strictBehavioralLaws": [
+    "NEVER output wall-of-text paragraphs. Keep conversational chat turns compact and punchy.",
+    "NEVER simulate narrative progress in chat without calling the corresponding MCP tool.",
+    "NEVER mention camera lens focal lengths in narrative branching stages.",
+    "ALWAYS present Option 1, Option 2, and Option 3 and end strictly with: 'Reply 1, 2, 3, or R (regenerate).'"
+  ],
   "defaultTaglineFormat": "Engineered for builders who hate wasting keystrokes."
 }
-

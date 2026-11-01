@@ -464,6 +464,23 @@ export class DAGStore {
     }
     graph.updatedAt = new Date().toISOString();
     fs.writeFileSync(this.filePath, JSON.stringify(graph, null, 2), "utf-8");
+
+    // Also mirror to isolated sessions directory and latest active pointer
+    try {
+      const sessionsDir = path.resolve(this.storageDir, "sessions");
+      if (!fs.existsSync(sessionsDir)) {
+        fs.mkdirSync(sessionsDir, { recursive: true });
+      }
+      const sessionPath = path.resolve(sessionsDir, `${graph.projectId}.json`);
+      fs.writeFileSync(sessionPath, JSON.stringify(graph, null, 2), "utf-8");
+
+      const latestPath = path.resolve(this.storageDir, "latest-active.json");
+      fs.writeFileSync(
+        latestPath,
+        JSON.stringify({ latestSessionId: graph.projectId, updatedAt: graph.updatedAt }, null, 2),
+        "utf-8"
+      );
+    } catch {}
   }
 
   /**

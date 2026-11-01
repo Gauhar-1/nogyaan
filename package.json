@@ -18,7 +18,7 @@
     "build": "tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/ui', {recursive:true}); fs.copyFileSync('src/ui/studio-app.html', 'dist/ui/studio-app.html'); try { fs.chmodSync('dist/cli.js', 0o755); fs.chmodSync('dist/index.js', 0o755); } catch(e){}\"",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
-    "test": "npm run build && node tests/run-verification.mjs && node tests/test-cli.mjs && node tests/test-stdio.mjs && node tests/test-system32-cwd.mjs",
+    "test": "npm run build && node tests/run-verification.mjs && node tests/test-architecture-and-fixes.mjs && node tests/test-cli.mjs && node tests/test-stdio.mjs && node tests/test-system32-cwd.mjs",
     "start": "node dist/index.js",
     "dev": "tsc -w"
   },
