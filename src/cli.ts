@@ -2,7 +2,7 @@
 
 /**
  * @file src/cli.ts
- * @description Cross-Platform CLI and DX Orchestrator for Ad Director MCP Server.
+ * @description Cross-Platform CLI and DX Orchestrator for noslop MCP Server.
  * Safely configures Claude Desktop (Standard + Windows MSIX Store), Cursor, and Claude Code
  * with non-destructive JSON merges, timestamped backups, environment diagnostics, and automated rules deployment.
  */
@@ -13,6 +13,8 @@ import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import open from "open";
+import { PresetRegistryService } from "./services/preset-registry.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -106,24 +108,24 @@ export function getClaudeDesktopMsixConfigPaths(): string[] {
 }
 
 /**
- * Returns all active Claude Desktop configuration targets:
- * - The standard path (%APPDATA%/Claude/claude_desktop_config.json)
- * - Any Windows MSIX virtualized paths (%LOCALAPPDATA%/Packages/Claude_[id]/LocalCache/Roaming/Claude/claude_desktop_config.json)
+ * Returns all active Claude Desktop configuration paths for this machine.
+ * On Windows, this returns both the standard %APPDATA% path and any MSIX Store virtualized paths.
  */
 export function getAllClaudeDesktopConfigTargets(): { name: string; path: string }[] {
-  const targets: { name: string; path: string }[] = [
-    { name: "Claude Desktop", path: getClaudeDesktopConfigPath() },
-  ];
+  const targets: { name: string; path: string }[] = [];
 
+  // Standard path
+  targets.push({
+    name: "Claude Desktop",
+    path: getClaudeDesktopConfigPath(),
+  });
+
+  // Windows MSIX Store virtualized paths
   const msixPaths = getClaudeDesktopMsixConfigPaths();
   for (let i = 0; i < msixPaths.length; i++) {
-    const msixPath = msixPaths[i];
     targets.push({
-      name:
-        msixPaths.length > 1
-          ? `Claude Desktop (MSIX Store #${i + 1})`
-          : "Claude Desktop (MSIX Store)",
-      path: msixPath,
+      name: msixPaths.length === 1 ? "Claude Desktop (MSIX Store)" : `Claude Desktop (MSIX #${i + 1})`,
+      path: msixPaths[i],
     });
   }
 
@@ -131,7 +133,7 @@ export function getAllClaudeDesktopConfigTargets(): { name: string; path: string
 }
 
 /**
- * Resolves global Cursor user MCP configuration path (~/.cursor/mcp.json).
+ * Resolves global Cursor configuration path (~/.cursor/mcp.json).
  */
 export function getCursorGlobalConfigPath(): string {
   return path.join(os.homedir(), ".cursor", "mcp.json");
@@ -152,10 +154,10 @@ export function getProjectClaudeCodeConfigPath(cwd: string = process.cwd()): str
 }
 
 /**
- * Resolves project-local Cursor rule target (./.cursor/rules/ad-director.mdc).
+ * Resolves project-local Cursor rule target (./.cursor/rules/noslop.mdc).
  */
 export function getProjectCursorRulePath(cwd: string = process.cwd()): string {
-  return path.join(cwd, ".cursor", "rules", "ad-director.mdc");
+  return path.join(cwd, ".cursor", "rules", "noslop.mdc");
 }
 
 // ============================================================================
@@ -177,8 +179,9 @@ export interface McpServerEntry {
 }
 
 /**
- * Non-destructively merges the "ad-director" entry into a target JSON config.
- * - If file exists: validates JSON, creates timestamped backup in same folder, merges ONLY mcpServers["ad-director"].
+ * Non-destructively merges the "noslop" entry into a target JSON config.
+ * - If file exists: validates JSON, creates timestamped backup in same folder,
+ *   removes any stale "ad-director" entry, and merges ONLY mcpServers["noslop"].
  * - If malformed: ABORTS immediately with error to protect user config.
  * - If file does not exist: creates directory recursively and writes clean template.
  */
@@ -232,7 +235,7 @@ export function safeInjectMcpServer(
         };
       }
 
-      // Ensure mcpServers object exists and merge only "ad-director"
+      // Ensure mcpServers object exists
       if (
         !config.mcpServers ||
         typeof config.mcpServers !== "object" ||
@@ -241,7 +244,13 @@ export function safeInjectMcpServer(
         config.mcpServers = {};
       }
 
-      config.mcpServers["ad-director"] = serverEntry;
+      // Cleanly remove any old "ad-director" entry to eliminate duplicates
+      if ("ad-director" in config.mcpServers) {
+        delete config.mcpServers["ad-director"];
+      }
+
+      // Register under "noslop"
+      config.mcpServers["noslop"] = serverEntry;
 
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 
@@ -257,7 +266,7 @@ export function safeInjectMcpServer(
 
       const newConfig = {
         mcpServers: {
-          "ad-director": serverEntry,
+          noslop: serverEntry,
         },
       };
 
@@ -280,7 +289,7 @@ export function safeInjectMcpServer(
 }
 
 /**
- * Cleanly removes "ad-director" from a config file while preserving all other servers.
+ * Cleanly removes "noslop" and legacy "ad-director" from a config file while preserving all other servers.
  */
 export function safeRemoveMcpServer(
   configPath: string,
@@ -309,12 +318,24 @@ export function safeRemoveMcpServer(
       };
     }
 
-    if (config?.mcpServers && "ad-director" in config.mcpServers) {
-      // Backup before modifying
-      const standardBackupPath = `${configPath}.bak`;
-      fs.copyFileSync(configPath, standardBackupPath);
+    let removed = false;
+    if (config?.mcpServers) {
+      if ("noslop" in config.mcpServers) {
+        delete config.mcpServers["noslop"];
+        removed = true;
+      }
+      if ("ad-director" in config.mcpServers) {
+        delete config.mcpServers["ad-director"];
+        removed = true;
+      }
+    }
 
-      delete config.mcpServers["ad-director"];
+    if (removed) {
+      const standardBackupPath = `${configPath}.bak`;
+      try {
+        fs.copyFileSync(configPath, standardBackupPath);
+      } catch {}
+
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 
       return {
@@ -341,7 +362,7 @@ export function safeRemoveMcpServer(
 }
 
 /**
- * Copies SKILL.md into .cursor/rules/ad-director.mdc with proper MDC frontmatter.
+ * Copies SKILL.md into .cursor/rules/noslop.mdc with proper MDC frontmatter.
  */
 export function installCursorRule(cwd: string = process.cwd()): boolean {
   try {
@@ -373,16 +394,23 @@ export function installCursorRule(cwd: string = process.cwd()): boolean {
       fs.mkdirSync(ruleDir, { recursive: true });
     }
 
+    // Remove old ad-director.mdc if present
+    const legacyRulePath = path.join(ruleDir, "ad-director.mdc");
+    if (fs.existsSync(legacyRulePath)) {
+      try {
+        fs.unlinkSync(legacyRulePath);
+      } catch {}
+    }
+
     // Format proper .mdc rule format for Cursor Agent
     const mdcHeader = `---
-description: Studio-Grade Ad Director FSM protocol with 1/2/3/R decision branching & Piyush Pandey storytelling
+description: noslop: State-Pruned Video Director & Storyboard MCP Server with 1/2/3/R decision branching and diffusion prompt compilation
 globs: *
 alwaysApply: true
 ---
 
 `;
 
-    // Remove existing YAML frontmatter if any, then prepend unified .mdc header
     const sanitizedBody = skillContent.replace(/^---[\s\S]*?---\n*/, "");
     fs.writeFileSync(targetRulePath, mdcHeader + sanitizedBody, "utf-8");
     return true;
@@ -415,20 +443,20 @@ export function checkPortAvailable(port: number = 4321): Promise<boolean> {
 const program = new Command();
 
 program
-  .name("ad-director-mcp")
-  .description("Studio-Grade Ad Director & Storyboard MCP Server with DAG branching and visual canvas")
-  .version("0.1.0");
+  .name("noslop")
+  .description("State-Pruned Video Director & Storyboard MCP Server with DAG branching and visual workbench")
+  .version("1.0.0");
 
 // ----------------------------------------------------------------------------
 // Command: init (Default)
 // ----------------------------------------------------------------------------
 program
   .command("init", { isDefault: true })
-  .description("Configure the Ad Director MCP server in Claude Desktop, Cursor, and Claude Code (Default)")
+  .description("Configure the noslop MCP server in Claude Desktop, Cursor, and Claude Code (Default)")
   .option("--local", "Configure with local Node.js path to dist/index.js for active development/testing")
   .option("--project", "Also configure project-local .cursor/mcp.json, .mcp.json, and install Cursor rules")
   .action(async (options) => {
-    console.log("\n🎬 \x1b[1m\x1b[37mAd Director MCP — Client Injector & Installer\x1b[0m\n");
+    console.log("\n🎬 \x1b[1m\x1b[32mnoslop\x1b[0m \x1b[1m\x1b[37m— Video Director MCP Client Injector & Installer\x1b[0m\n");
 
     const isLocal = Boolean(options.local);
     const isProject = Boolean(options.project);
@@ -437,7 +465,6 @@ program
     let serverEntry: McpServerEntry;
     if (isLocal) {
       const projectRoot = getPackageRoot();
-      // Find absolute path to dist/index.js
       let indexPath = path.resolve(__dirname, "index.js");
       if (!fs.existsSync(indexPath)) {
         const rootDist = path.resolve(projectRoot, "dist", "index.js");
@@ -450,6 +477,7 @@ program
         command: "node",
         args: [indexPath],
         env: {
+          NOSLOP_WORKSPACE: projectRoot,
           AD_DIRECTOR_WORKSPACE: projectRoot,
         },
       };
@@ -459,10 +487,10 @@ program
     } else {
       serverEntry = {
         command: "npx",
-        args: ["-y", "ad-director-mcp", "serve"],
+        args: ["-y", "noslop", "serve"],
       };
       console.log(`\x1b[36m• Running in Production mode (npx)\x1b[0m`);
-      console.log(`  Target: \x1b[33mnpx -y ad-director-mcp serve\x1b[0m\n`);
+      console.log(`  Target: \x1b[33mnpx -y noslop serve\x1b[0m\n`);
     }
 
     const results: ConfigOpResult[] = [];
@@ -497,11 +525,11 @@ program
     for (const r of results) {
       if (r.status === "updated") {
         console.log(
-          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Updated ${r.path} \x1b[90m(Backup: ${path.basename(r.backupPath || "")})\x1b[0m`
+          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Configured 'noslop' in ${r.path} \x1b[90m(Backup: ${path.basename(r.backupPath || "")})\x1b[0m`
         );
       } else if (r.status === "created") {
         console.log(
-          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Created new config at ${r.path}`
+          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Created new config with 'noslop' at ${r.path}`
         );
       } else if (r.status === "aborted") {
         hasAbort = true;
@@ -511,10 +539,49 @@ program
 
     console.log("\n" + "─".repeat(60) + "\n");
     if (!hasAbort) {
-      console.log("\x1b[32m\x1b[1m✅ Installed! Restart Claude Desktop / Cursor and type:\x1b[0m");
-      console.log(`\x1b[37m"Direct an Indian D2C ad for QuickBiteQR using ad-director"\x1b[0m\n`);
+      console.log("\x1b[32m\x1b[1m✅ noslop installed! Restart Claude Desktop / Cursor and type:\x1b[0m");
+      console.log(`\x1b[37m"Direct a video ad using noslop" or type "/preset-indian-d2c-story"\x1b[0m\n`);
     } else {
       console.log("\x1b[33m⚠ Some targets were skipped or aborted due to syntax errors.\x1b[0m\n");
+    }
+  });
+
+// ----------------------------------------------------------------------------
+// Command: studio
+// ----------------------------------------------------------------------------
+program
+  .command("studio")
+  .description("Launch and open the local noslop Director's Workbench UI in your browser")
+  .option("-p, --port <port>", "Port to use for the visual studio", "4321")
+  .action(async (opts) => {
+    const port = parseInt(opts.port, 10) || 4321;
+    const url = `http://localhost:${port}`;
+    console.log(`\n🎨 Opening noslop Studio at ${url}...\n`);
+    try {
+      await open(url);
+    } catch {
+      console.log(`Please open ${url} in your browser.`);
+    }
+  });
+
+// ----------------------------------------------------------------------------
+// Command: presets
+// ----------------------------------------------------------------------------
+program
+  .command("presets")
+  .description("List all available storytelling presets and narrative cartridges")
+  .action(async () => {
+    console.log("\n🎛️ \x1b[1m\x1b[32mnoslop\x1b[0m \x1b[1m\x1b[37m— Available Narrative Cartridges:\x1b[0m\n");
+    try {
+      const registry = new PresetRegistryService();
+      const presets = registry.getAllPresets();
+      for (const p of presets) {
+        console.log(`  \x1b[32m•\x1b[0m \x1b[1m${p.id}\x1b[0m (${p.name})`);
+        console.log(`    \x1b[90mPhilosophy:\x1b[0m ${p.philosophy || p.description}`);
+        console.log(`    \x1b[90mLanguage Rule:\x1b[0m ${p.dialogueLanguageRule}\n`);
+      }
+    } catch (err: any) {
+      console.error("Could not load presets:", err.message);
     }
   });
 
@@ -525,7 +592,7 @@ program
   .command("doctor")
   .description("Verify system readiness, Node version, port 4321, and config file health")
   .action(async () => {
-    console.log("\n🩺 \x1b[1m\x1b[37mAd Director MCP — System Diagnostics (Doctor)\x1b[0m\n");
+    console.log("\n🩺 \x1b[1m\x1b[32mnoslop\x1b[0m \x1b[1m\x1b[37m— System Diagnostics (Doctor)\x1b[0m\n");
 
     // 1. Node.js Version Check (>= 18)
     const nodeMajor = parseInt(process.versions.node.split(".")[0], 10);
@@ -553,9 +620,9 @@ program
     // 3. Studio Web Server Port Check (4321)
     const portFree = await checkPortAvailable(4321);
     if (portFree) {
-      console.log(`  \x1b[32m✔\x1b[0m Port 4321: Available for visual Studio Canvas server`);
+      console.log(`  \x1b[32m✔\x1b[0m Port 4321: Available for visual Studio Workbench server`);
     } else {
-      console.log(`  \x1b[33m⚠\x1b[0m Port 4321: In use (another instance of Ad Director Studio may be running)`);
+      console.log(`  \x1b[33m⚠\x1b[0m Port 4321: In use (another instance of noslop Studio may be running)`);
     }
 
     // 4. Config Files Syntax Health
@@ -572,12 +639,15 @@ program
         try {
           const raw = fs.readFileSync(c.path, "utf-8");
           const parsed = JSON.parse(raw);
-          const hasAdDirector = Boolean(parsed.mcpServers?.["ad-director"]);
-          console.log(
-            `  \x1b[32m✔\x1b[0m ${c.name}: Valid JSON at ${c.path} ${
-              hasAdDirector ? "\x1b[32m[ad-director configured]\x1b[0m" : "\x1b[90m[no ad-director]\x1b[0m"
-            }`
-          );
+          const hasNoslop = Boolean(parsed.mcpServers?.["noslop"]);
+          const hasLegacy = Boolean(parsed.mcpServers?.["ad-director"]);
+          let tag = "\x1b[90m[not configured]\x1b[0m";
+          if (hasNoslop) {
+            tag = "\x1b[32m[noslop configured]\x1b[0m";
+          } else if (hasLegacy) {
+            tag = "\x1b[33m[legacy ad-director detected — run 'noslop init' to update]\x1b[0m";
+          }
+          console.log(`  \x1b[32m✔\x1b[0m ${c.name}: Valid JSON at ${c.path} ${tag}`);
         } catch (err: any) {
           console.log(`  \x1b[31m✖\x1b[0m ${c.name}: Malformed JSON in ${c.path} (${err.message})`);
         }
@@ -594,10 +664,10 @@ program
 // ----------------------------------------------------------------------------
 program
   .command("uninstall")
-  .description("Safely remove Ad Director MCP server from Claude Desktop and Cursor configs")
+  .description("Safely remove noslop MCP server from Claude Desktop and Cursor configs")
   .option("--project", "Also remove from project-local .cursor/mcp.json and .mcp.json")
   .action(async (options) => {
-    console.log("\n🧹 \x1b[1m\x1b[37mAd Director MCP — Uninstaller\x1b[0m\n");
+    console.log("\n🧹 \x1b[1m\x1b[32mnoslop\x1b[0m \x1b[1m\x1b[37m— Uninstaller\x1b[0m\n");
 
     const targets = [
       ...getAllClaudeDesktopConfigTargets(),
@@ -620,9 +690,9 @@ program
     for (const t of targets) {
       const res = safeRemoveMcpServer(t.path, t.name);
       if (res.status === "removed") {
-        console.log(`  \x1b[32m✔\x1b[0m Removed 'ad-director' from ${t.path} (Backup: ${path.basename(res.backupPath || "")})`);
+        console.log(`  \x1b[32m✔\x1b[0m Removed 'noslop' from ${t.path} (Backup: ${path.basename(res.backupPath || "")})`);
       } else if (res.status === "skipped") {
-        console.log(`  \x1b[90m○\x1b[0m 'ad-director' was not present in ${t.path}`);
+        console.log(`  \x1b[90m○\x1b[0m 'noslop' was not present in ${t.path}`);
       } else if (res.status === "aborted") {
         console.error(`  \x1b[31m✖\x1b[0m ${res.error}`);
       }
@@ -636,9 +706,8 @@ program
 // ----------------------------------------------------------------------------
 program
   .command("serve")
-  .description("Launch the Ad Director Stdio MCP server")
+  .description("Launch the noslop Stdio MCP server")
   .action(async () => {
-    // Dynamically launch the index MCP server
     await import("./index.js");
   });
 

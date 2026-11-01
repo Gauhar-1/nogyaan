@@ -105,7 +105,7 @@ export async function executeInitBrief(
       workflowRule: "STOP and wait for user selection. NEVER simulate or proceed past CORE_THEME without calling 'branch_scene'."
     },
     instructionsForAgent: [
-      'The brief is now immutably locked in .ad-director/story_graph.json.',
+      'The brief is now immutably locked in state storage (.noslop/ or .ad-director/).',
       'The state machine is set to stage: CORE_THEME.',
       `Language rule: ${activePreset.dialogueLanguageRule}`,
       'Present exactly 3 narrative options: Option 1, Option 2, and Option 3.',

@@ -34,7 +34,11 @@ export class SessionDagService {
   }
 
   public getStorageDir(): string {
-    return path.resolve(this.workspaceDir, '.ad-director');
+    const primary = path.resolve(this.workspaceDir, '.noslop');
+    if (fs.existsSync(primary)) return primary;
+    const legacy = path.resolve(this.workspaceDir, '.ad-director');
+    if (fs.existsSync(legacy)) return legacy;
+    return primary;
   }
 
   public getSessionsDir(): string {
@@ -67,9 +71,10 @@ export class SessionDagService {
   }
 
   private resolveWorkspaceDir(): string {
-    // 1. Check environment variable override
-    if (process.env.AD_DIRECTOR_WORKSPACE && process.env.AD_DIRECTOR_WORKSPACE.trim().length > 0) {
-      const customWs = path.resolve(process.env.AD_DIRECTOR_WORKSPACE.trim());
+    // 1. Check environment variable override (NOSLOP_WORKSPACE or legacy AD_DIRECTOR_WORKSPACE)
+    const envWs = process.env.NOSLOP_WORKSPACE || process.env.AD_DIRECTOR_WORKSPACE;
+    if (envWs && envWs.trim().length > 0) {
+      const customWs = path.resolve(envWs.trim());
       try {
         fs.mkdirSync(customWs, { recursive: true });
         if (this.isDirectoryWritable(customWs)) {
@@ -95,7 +100,7 @@ export class SessionDagService {
     }
 
     // 3. Fallback to user home directory
-    const fallback = path.join(os.homedir(), '.ad-director-workspace');
+    const fallback = path.join(os.homedir(), '.noslop-workspace');
     try {
       fs.mkdirSync(fallback, { recursive: true });
     } catch {}
@@ -451,7 +456,7 @@ export class SessionDagService {
     let continuityBridge: string | undefined;
     if (nextStage !== 'LOCK_ASSETS') {
       continuityBridge =
-        `[🎛️ Preset: ${session.presetId} | Session: ${session.sessionId} | Pruned: 2 rejected branches wiped]\n` +
+        `[🎬 noslop | Cartridge: ${session.presetId} | Session: ${session.sessionId} | Pruned: 2 rejected branches wiped]\n` +
         `[🔗 MANDATORY CONTINUITY BRIDGE]: Scene ${sceneNum} ended at this exact physical frame: "${exitAnchor}".\n` +
         `Every single one of your 3 options for Scene ${sceneNum + 1} MUST physically and visually connect to this exact state.\n` +
         `[🗣️ LANGUAGE RULE]: ${languageRule}`;

@@ -1,66 +1,71 @@
-# Ad Director MCP (🎬 `ad-director-mcp`)
+<div align="center">
+  <img src="assets/logo.svg" alt="noslop logo" width="88" height="88" />
 
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org)
-[![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-1.6.0-purple.svg)](https://modelcontextprotocol.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  # noslop
 
-> **Studio-Grade Video Ad Director & Production Orchestrator** for Claude Desktop, Cursor, and Claude Code. Powered by hardened DAG state machine branching (1/2/3/R), scene-to-scene physical continuity locks (`exit_frame_anchor`), reference-tagged kinetic video prompts, and a real-time 3-Zone local production studio canvas.
+  **One-shot prompts make AI video slop. Real directors cut the context.**
 
----
+  An MCP server + Local Director's Workbench that stops Claude from hallucinating multi-scene video scripts. Steer stories with 1 keystroke (`1`, `2`, `3`), prune rejected ideas from context memory, lock your Cast & Set (`CHAR_01`), and compile single-take camera prompts for **Kling 3.0, Veo 3.1, Runway Gen-4.5, and Seedance**.
 
-## 🌟 Key Highlights
-
-- **🎛️ Native Claude Input-Bar Presets (`/preset-*`)**:
-  Select storytelling frameworks directly from Claude Desktop's slash menu:
-  - `/preset-indian-d2c-story`: Deeply emotional human-centric advertising (Piyush Pandey school of human truth). Hinglish character dialogue with 100% English camera directions.
-  - `/preset-dev-product-launch`: High-craft developer cinema showcasing painful production bugs, terminal flow states, and friction relief. Strictly 100% English.
-  - `/preset-tiktok-ugc-hook`: High-velocity vertical video framework engineered for thumb-stopping 0-3 second retention. Strictly 100% English.
-- **🛡️ Hardened FSM Stage Locks & Anti-Jargon Gate**:
-  Deterministic sequence enforcement (`CORE_THEME` ➔ `SCENE_1_SETUP` ➔ `SCENE_2_CATALYST` ➔ `SCENE_3_TWIST` ➔ `SCENE_4_CLIMAX` ➔ `LOCK_ASSETS` ➔ `COMPILE_SHOTS` ➔ `COMPLETED`). Blocks camera specs during narrative stages with automated error rejection.
-- **✂️ 1/2/3/R State-Pruning Decision Engine**:
-  Locks approved creative choices, wipes unchosen branches, tracks cumulative pruned branches, and supports instant regeneration (`R`) without advancing stages.
-- **🔗 Physical Continuity Bridge (`exit_frame_anchor`)**:
-  Every committed scene locks its exact physical termination frame (character posture, objects, camera position), enforcing visual continuity into the next scene.
-- **🏷️ Reference-Tagged Kinetic Video Prompts**:
-  Tailored for modern generative video models (**Kling 3.0 Omni**, **Google Veo 3.1**, **Runway Gen-4.5**, **Seedance**). Uses reference image tags (`@CHAR_01`, `@BG_01`, `@PROD_01`), concise kinetic actions, dialogue lip-sync, and SFX/audio descriptors without bloated 80-word static appearance text.
-- **🎨 3-Zone Local Web Studio Canvas (`http://localhost:4321`)**:
-  Real-time dark mode production bible:
-  - **Zone 1**: The Approved Master Narrative Arc with exit-frame continuity bridges.
-  - **Zone 2**: Master Continuity Asset Bible with one-click Midjourney/Flux prompt copying.
-  - **Zone 3**: Two-Column Screenplay & AI Kinetic Video Prompt Matrix.
-  - Pure UTF-8 data flow—zero HTML entity double-escaping (`&#039;` / `&quot;`).
-- **🗂️ Isolated Session DAGs**:
-  Sessions are isolated in `.ad-director/sessions/<companySlug>-<shortId>.json` with `.ad-director/latest-active.json` pointers. Prevents cross-tab pollution and enforces the New-Session Intake Gate.
+  [![MIT License](https://img.shields.io/badge/License-MIT-10B981.svg?style=flat-square)](LICENSE)
+  [![MCP Compatible](https://img.shields.io/badge/MCP-Claude%20%7C%20Cursor-F3F4F6.svg?style=flat-square)](https://modelcontextprotocol.io)
+</div>
 
 ---
 
-## 🚀 Quickstart & Installation
+## See the Difference in 5 Seconds
 
-### Option 1: Automatic CLI Setup (Recommended)
+Ask normal Claude for a multi-scene ad, and it dumps chatty, multi-cut paragraphs that break video diffusion models and morph your actor's face in every shot:
 
-Run the cross-platform auto-injector:
+❌ **Normal One-Shot Claude Prompt (Breaks in Kling / Runway / Veo):**
+> *"Scene 3: A 28-year-old tired shopper in a grey hoodie sits at a desk at midnight, then the camera cuts to a close-up of the laptop screen showing filters, then pans out as sunrise light fills the room while a warm narrator says 'Find your outfit today.'"*
+> *(Why this fails: Mixes 2 camera cuts in 1 generation, forgets Scene 1 wardrobe details, and makes the actor's lips move to a narrator's voiceover).*
 
-```bash
-# Production setup via npx
-npx ad-director-mcp init
-
-# Or for project-local config (.cursor/mcp.json and .mcp.json)
-npx ad-director-mcp init --project
+✅ **`noslop` Compiled Single-Take Prompt (Locked Continuity + Pure Camera Physics):**
+```text
+[Refs: @CHAR_01 (The Shopper), @BG_01 (The Apartment), @PROD_01 (CartContext UI)]
+35mm Anamorphic f/2.0, low-angle medium close-up, slow continuous dolly push-in.
+@CHAR_01 leans back in the desk chair inside @BG_01, one hand covering a quiet laugh as cool cyan light from @PROD_01 reflects across their eyes. Single continuous take, shallow depth of field, zero internal cuts.
+On-Camera Lip-Sync: NONE | Post-Prod VO (Premiere): "Built from your feedback." | Cut Note: Match-cut on chair lean.
 ```
 
-The CLI automatically detects your OS and configures:
-- **Claude Desktop** (macOS, Linux, and Windows standard + MSIX Store virtualized paths)
-- **Cursor** (Global `~/.cursor/mcp.json` or project-local)
-- **Claude Code** (Project-local `.mcp.json`)
+👉 **[See a complete 5-Scene Production Bible generated by `noslop` →](examples/)**
 
-### Option 2: Local Development Setup
+---
+
+<!-- REQUIRED BEFORE LAUNCH: Drop 1 screenshot of localhost:4321 + 1 8-second GIF here -->
+<p align="center">
+  <img src="assets/studio-workbench.png" width="100%" alt="noslop 2-Pane Split Director's Workbench" />
+</p>
+
+---
+
+## ⚡ Install in 10 Seconds
+
+**Option A: Automatic CLI Setup (Claude Desktop, Claude Code & Cursor)**
+```bash
+npx noslop init
+```
+
+**Option B: Manual MCP Config (`claude_desktop_config.json` / `.cursor/mcp.json`)**
+```json
+{
+  "mcpServers": {
+    "noslop": {
+      "command": "npx",
+      "args": ["-y", "noslop"]
+    }
+  }
+}
+```
+
+### Option B: Local Development Setup
 
 Clone the repository and build:
 
 ```bash
-git clone https://github.com/your-org/ad-director-mcp.git
-cd ad-director-mcp
+git clone https://github.com/your-org/noslop.git
+cd noslop
 npm install
 npm run build
 
@@ -70,6 +75,37 @@ node dist/cli.js init --local
 # Verify environment & configs
 node dist/cli.js doctor
 ```
+
+---
+
+## How `noslop` Works (4 Keystrokes, Zero Prompt Engineering)
+
+1. **Pick a Cultural or Format Cartridge (`/` in Claude's input box):**
+   * `/preset-indian-d2c-story` — Indian emotional/humorous storytelling tropes + natural Hinglish dialogue.
+   * `/preset-dev-product-launch` — High-tempo SaaS & dev-tool launch videos (strictly 100% English).
+   * `/preset-tiktok-ugc-hook` — 3-second scroll-stoppers and direct-response retention arcs.
+2. **Branch & Prune (`1`, `2`, `3`, `R`):**
+   Claude proposes 3 options for each story beat. When you type `2`, `noslop` **physically deletes Options 1 and 3 from `.noslop/sessions/`** so rejected ideas never bleed into later scenes, and locks the **physical exit frame** of Scene $N$ so Scene $N+1$ starts from the exact millisecond the previous shot ended.
+3. **Lock Your Cast & Set First (`CHAR_01`, `BG_01`, `PROD_01`):**
+   Before compiling camera shots, `noslop` locks your character turnaround, environment lighting, and product specs with one-click **Midjourney / Flux reference image prompts**.
+4. **Open the 2-Pane Split Director's Workbench (`http://localhost:4321`):**
+   Review your full narrative script on the left pane and copy individual scene prompts on the right—toggling effortlessly between **Reference Tag Mode (`@CHAR_01`)** and **Standalone Full-Text Mode**.
+
+---
+
+## `noslop` vs. Normal Claude Chat
+
+| Feature | Normal Claude (Web Chat) | 🎬 `noslop` (MCP + Workbench) |
+| :--- | :--- | :--- |
+| **Rejected Ideas** | Stay in chat history forever; cause hallucinations by Scene 3. | **Physically deleted** from state file after every choice. |
+| **Scene Continuity** | Teleports characters between shots. | Enforces **Exit-Frame-to-Entry-Frame** physical bridges. |
+| **Voiceover vs. Lip-Sync** | Mixes narrator VO into video prompt (ruins actor mouth motion). | Strictly separates **On-Camera Lip-Sync** from **Post-Prod VO**. |
+| **Shot Compilation** | Dumps all scenes in one lazy batch with internal cuts. | Compiles **1 scene at a time** (single continuous lens & movement). |
+| **Output Format** | 2,000-word wall of Markdown text. | **2-Pane Split Web Workbench** (`localhost:4321`) + Dual Prompt Modes. |
+
+---
+
+
 
 ---
 
@@ -128,7 +164,7 @@ Test suites executed:
 ## 📁 Repository Structure
 
 ```text
-ad-director-mcp/
+noslop/
 ├── presets/                    # Dynamic narrative framework definitions
 │   ├── indian-d2c-story.json   # Hinglish emotional storytelling
 │   ├── dev-product-launch.json # 100% English developer cinema

@@ -41,10 +41,10 @@ async function runTests() {
     "Chai___Sons___100____Best_",
     "Brand name should have non-alphanumeric characters replaced by underscore"
   );
-  assert.strictEqual(
-    OUTPUT_DIR,
-    path.resolve(process.cwd(), ".ad-director"),
-    "Output directory must be hardcoded to path.resolve(process.cwd(), '.ad-director')"
+  assert.ok(
+    OUTPUT_DIR === path.resolve(process.cwd(), ".noslop") ||
+    OUTPUT_DIR === path.resolve(process.cwd(), ".ad-director"),
+    "Output directory must resolve to .noslop or .ad-director"
   );
   console.log("  ✔ Path safety and name sanitization passed.");
 

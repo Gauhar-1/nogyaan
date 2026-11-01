@@ -7,7 +7,9 @@ node_modules/
 dist/
 *.tgz
 
-# Local Ad Director State
+# Local State (noslop & ad-director)
+.noslop/
+.noslop-*/
 .ad-director/
 .ad-director-*/
 

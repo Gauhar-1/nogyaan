@@ -1,18 +1,18 @@
 {
-  "name": "ad-director-mcp",
-  "version": "0.1.0",
-  "description": "Interactive Storyboard & Ad Director MCP Server with DAG story branching, studio UI, and multi-preset narrative frameworks.",
+  "name": "noslop",
+  "version": "1.0.0",
+  "description": "State-Pruned Video Director & Storyboard MCP Server with DAG story branching, studio workbench, and diffusion model prompt compilation.",
   "type": "module",
   "bin": {
-    "ad-director-mcp": "./dist/cli.js",
-    "ad-director-server": "./dist/index.js"
+    "noslop": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "files": [
     "dist",
     "presets",
     "SKILL.md",
-    "src/ui"
+    "src/ui",
+    "assets"
   ],
   "scripts": {
     "build": "tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/ui', {recursive:true}); fs.copyFileSync('src/ui/studio-app.html', 'dist/ui/studio-app.html'); try { fs.chmodSync('dist/cli.js', 0o755); fs.chmodSync('dist/index.js', 0o755); } catch(e){}\"",
@@ -23,12 +23,15 @@
     "dev": "tsc -w"
   },
   "keywords": [
+    "noslop",
     "mcp",
     "model-context-protocol",
     "storyboard",
     "video-director",
-    "advertising",
     "generative-video",
+    "kling",
+    "veo",
+    "runway",
     "claude",
     "cursor"
   ],

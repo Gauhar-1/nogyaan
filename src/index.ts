@@ -2,7 +2,7 @@
 
 /**
  * @file src/index.ts
- * @description Master Stdio MCP Server Entry Point for Ad Director.
+ * @description Master Stdio MCP Server Entry Point for noslop.
  * Enforces strict FSM stages, Zod schemas, Anti-Jargon validation,
  * referential integrity checks, and serves the Studio UI on http://localhost:4321.
  */
@@ -111,14 +111,14 @@ function startStudioServer(port: number = 4321): void {
 
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`[ad-director] Studio canvas port ${port} is already active.`);
+      console.error(`[noslop] Studio canvas port ${port} is already active.`);
     } else {
-      console.error('[ad-director] Studio server error:', err);
+      console.error('[noslop] Studio server error:', err);
     }
   });
 
   server.listen(port, () => {
-    console.error(`[ad-director] Studio visual canvas running at http://localhost:${port}`);
+    console.error(`[noslop] Studio visual canvas running at http://localhost:${port}`);
   });
 }
 
@@ -128,8 +128,8 @@ function startStudioServer(port: number = 4321): void {
 
 const server = new Server(
   {
-    name: 'ad-director-mcp',
-    version: '0.1.0'
+    name: 'noslop',
+    version: '1.0.0'
   },
   {
     capabilities: {
@@ -151,10 +151,17 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
     resources: [
       {
-        uri: 'ad-director://story_graph',
-        name: 'Ad Director Story Graph',
+        uri: 'noslop://story_graph',
+        name: 'noslop Story Graph',
         description:
           'Authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
+        mimeType: 'application/json'
+      },
+      {
+        uri: 'ad-director://story_graph',
+        name: 'noslop Story Graph (Legacy Alias)',
+        description:
+          'Legacy alias for authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
         mimeType: 'application/json'
       }
     ]
@@ -162,7 +169,10 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
 });
 
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  if (request.params.uri === 'ad-director://story_graph') {
+  if (
+    request.params.uri === 'noslop://story_graph' ||
+    request.params.uri === 'ad-director://story_graph'
+  ) {
     const session = sessionService.loadSession();
     return {
       contents: [
@@ -186,10 +196,10 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('[ad-director] Ad Director MCP Server running on stdio.');
+  console.error('[noslop] noslop MCP Server running on stdio.');
 }
 
 main().catch((err) => {
-  console.error('[ad-director] Fatal server error:', err);
+  console.error('[noslop] Fatal server error:', err);
   process.exit(1);
 });

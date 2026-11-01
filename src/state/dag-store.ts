@@ -36,15 +36,16 @@ export function isDirectoryWritable(dirPath: string): boolean {
 
 /**
  * Resilient workspace directory resolver:
- * 1. Honors AD_DIRECTOR_WORKSPACE if set and writable.
+ * 1. Honors NOSLOP_WORKSPACE or AD_DIRECTOR_WORKSPACE if set and writable.
  * 2. Checks process.cwd(); if it is a protected system dir (like C:\WINDOWS\system32 in MSIX)
- *    or not writable, automatically falls back to ~/.ad-director-workspace.
+ *    or not writable, automatically falls back to ~/.noslop-workspace.
  * 3. Guarantees a safe, writable base directory for state persistence.
  */
 export function getWorkspaceDir(): string {
   // 1. Explicit environment override takes precedence
-  if (process.env.AD_DIRECTOR_WORKSPACE && process.env.AD_DIRECTOR_WORKSPACE.trim()) {
-    const custom = path.resolve(process.env.AD_DIRECTOR_WORKSPACE.trim());
+  const envWs = process.env.NOSLOP_WORKSPACE || process.env.AD_DIRECTOR_WORKSPACE;
+  if (envWs && envWs.trim()) {
+    const custom = path.resolve(envWs.trim());
     if (isDirectoryWritable(custom)) {
       return custom;
     }
@@ -68,7 +69,7 @@ export function getWorkspaceDir(): string {
   }
 
   // 3. Fallback to user home directory
-  const fallback = path.join(os.homedir(), ".ad-director-workspace");
+  const fallback = path.join(os.homedir(), ".noslop-workspace");
   try {
     fs.mkdirSync(fallback, { recursive: true });
   } catch {}
@@ -76,7 +77,12 @@ export function getWorkspaceDir(): string {
 }
 
 export function getStorageDir(baseDir?: string): string {
-  return path.resolve(baseDir || getWorkspaceDir(), ".ad-director");
+  const ws = baseDir || getWorkspaceDir();
+  const primary = path.resolve(ws, ".noslop");
+  if (fs.existsSync(primary)) return primary;
+  const legacy = path.resolve(ws, ".ad-director");
+  if (fs.existsSync(legacy)) return legacy;
+  return primary;
 }
 
 export function getStoryGraphPath(baseDir?: string): string {
@@ -368,7 +374,7 @@ export class DAGStore {
 
   constructor(baseDir?: string) {
     this.baseDir = baseDir ? path.resolve(baseDir) : getWorkspaceDir();
-    this.storageDir = path.resolve(this.baseDir, ".ad-director");
+    this.storageDir = getStorageDir(this.baseDir);
     this.filePath = path.resolve(this.storageDir, "story_graph.json");
   }
 
