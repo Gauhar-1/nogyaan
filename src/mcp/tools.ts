@@ -378,3 +378,4 @@ export function registerMcpTools(
     }
   });
 }
+

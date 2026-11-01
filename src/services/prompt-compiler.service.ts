@@ -129,3 +129,4 @@ export class PromptCompilerService {
     return `High-end commercial hero studio photography of ${prod.name}, ${prod.packagingAppearance}, angle: ${prod.heroAngle}, advertising luxury commercial lighting, reflections, condensation drops, crisp product packaging, 85mm macro lens, Hasselblad quality --ar 16:9 --style raw`;
   }
 }
+

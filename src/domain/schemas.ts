@@ -148,3 +148,4 @@ export const LatestActiveSchema = z.object({
 });
 
 export type LatestActive = z.infer<typeof LatestActiveSchema>;
+
