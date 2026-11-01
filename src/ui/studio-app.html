@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Director AI — Studio Storyboard</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --card: #18181b;
+      --card-hover: #27272a;
+      --border: #27272a;
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --text-dim: #71717a;
+      --accent: #10b981;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --font-serif: Georgia, Cambria, "Times New Roman", Times, serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    header {
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      background-color: rgba(9, 9, 11, 0.9);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-badge {
+      width: 28px;
+      height: 28px;
+      background: #f4f4f5;
+      color: #09090b;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    .preset-pill {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      background: #18181b;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-muted);
+    }
+
+    .stage-pill {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 3px 8px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: 4px;
+      color: #34d399;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    button.btn {
+      background: #f4f4f5;
+      color: #09090b;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    button.btn:hover {
+      background: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    button.btn-secondary {
+      background: #18181b;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    button.btn-secondary:hover {
+      background: #27272a;
+    }
+
+    /* Main Grid Layout */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 440px 1fr;
+      min-height: calc(100vh - 56px);
+    }
+
+    @media (max-width: 960px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Left Pane: Treatment */
+    .left-pane {
+      border-right: 1px solid var(--border);
+      background-color: #09090b;
+      padding: 28px 24px;
+      overflow-y: auto;
+      max-height: calc(100vh - 56px);
+    }
+
+    .pane-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    .treatment-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      letter-spacing: -0.3px;
+    }
+
+    .brief-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .brief-card strong {
+      color: #f4f4f5;
+    }
+
+    .treatment-prose {
+      font-family: var(--font-serif);
+      font-size: 15px;
+      line-height: 1.8;
+      color: #e4e4e7;
+    }
+
+    .treatment-paragraph {
+      margin-bottom: 18px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(39, 39, 42, 0.4);
+    }
+
+    .treatment-paragraph:last-child {
+      border-bottom: none;
+    }
+
+    /* Right Pane: Visual Storyboard */
+    .right-pane {
+      background-color: #0c0c0e;
+      padding: 28px 32px;
+      overflow-y: auto;
+      max-height: calc(100vh - 56px);
+    }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #27272a;
+      padding: 2px 7px;
+      border-radius: 999px;
+      color: var(--text-muted);
+    }
+
+    /* DAG Decision Lineage */
+    .lineage-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 36px;
+    }
+
+    .lineage-node {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      transition: border-color 0.15s ease;
+    }
+
+    .lineage-node:hover {
+      border-color: #3f3f46;
+    }
+
+    .node-step-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      background: #27272a;
+      color: #f4f4f5;
+      padding: 4px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .node-content {
+      flex: 1;
+    }
+
+    .node-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f4f4f5;
+      margin-bottom: 4px;
+    }
+
+    .node-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Shots Matrix */
+    .shots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+
+    .shot-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.15s ease;
+    }
+
+    .shot-card:hover {
+      border-color: #3f3f46;
+      transform: translateY(-2px);
+    }
+
+    .shot-preview {
+      height: 130px;
+      background: #121214;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .camera-pill {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      background: rgba(9, 9, 11, 0.85);
+      border: 1px solid #3f3f46;
+      padding: 3px 6px;
+      border-radius: 4px;
+      color: #e4e4e7;
+    }
+
+    .duration-pill {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: rgba(9, 9, 11, 0.85);
+      border: 1px solid #3f3f46;
+      padding: 3px 6px;
+      border-radius: 4px;
+      color: var(--text-muted);
+    }
+
+    .shot-body {
+      padding: 14px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .shot-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #f4f4f5;
+    }
+
+    .shot-action {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 12px;
+      flex: 1;
+    }
+
+    .shot-prompts {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #121215;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #27272a;
+      color: #a1a1aa;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Assets row */
+    .assets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+      margin-bottom: 36px;
+    }
+
+    .asset-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px;
+    }
+
+    .asset-role {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .asset-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #f4f4f5;
+      margin-bottom: 6px;
+    }
+
+    .asset-prompt {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .empty-placeholder {
+      padding: 32px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 13px;
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo-badge">AD</div>
+      <div class="brand-title">Director AI — Studio Canvas</div>
+      <div class="preset-pill" id="presetPill">indian-d2c-story</div>
+      <div class="stage-pill" id="stagePill">CORE_THEME</div>
+    </div>
+    <div class="header-actions">
+      <div class="status-indicator">
+        <div class="pulse-dot"></div>
+        <span id="syncStatus">DAG Live Sync</span>
+      </div>
+      <button class="btn btn-secondary" onclick="fetchGraph()">Refresh</button>
+      <button class="btn" onclick="copyTreatment()">Copy Treatment</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left Pane: Live Script Treatment -->
+    <section class="left-pane">
+      <div class="pane-label">Master Narrative Screenplay</div>
+      <h1 class="treatment-title" id="projectTitle">Campaign Treatment</h1>
+
+      <div class="brief-card" id="briefCard">
+        <strong>Campaign Brief:</strong>
+        <p id="briefText" style="margin-top: 6px; color: #a1a1aa;">Awaiting intake brief initialization via MCP tool <code>init_brief</code>...</p>
+      </div>
+
+      <div class="pane-label" style="margin-top: 24px;">Flowing Treatment</div>
+      <div class="treatment-prose" id="treatmentContainer">
+        <p class="treatment-paragraph" style="color: #71717a; font-style: italic;">
+          As you make directorial choices in the Writer's Room, locked cinematic scene paragraphs will accumulate here sequentially.
+        </p>
+      </div>
+    </section>
+
+    <!-- Right Pane: DAG Storyboard & Shots -->
+    <section class="right-pane">
+      <!-- Section 1: DAG Decision Lineage -->
+      <div class="section-title">
+        <span>Locked Decision Lineage (DAG)</span>
+        <span class="badge-count" id="nodeCountBadge">0 Nodes</span>
+        <span class="badge-count" id="prunedBadge" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">0 Pruned</span>
+      </div>
+      <div class="lineage-stack" id="lineageStack">
+        <div class="empty-placeholder">No locked decision nodes yet. Begin with <code>init_brief</code>.</div>
+      </div>
+
+      <!-- Section 2: Locked Visual Assets -->
+      <div class="section-title">
+        <span>Casting & Environment Anchors</span>
+        <span class="badge-count" id="assetCountBadge">0 Assets</span>
+      </div>
+      <div class="assets-grid" id="assetsGrid">
+        <div class="empty-placeholder" style="grid-column: 1 / -1;">No visual assets locked yet. Define via <code>lock_assets</code>.</div>
+      </div>
+
+      <!-- Section 3: Technical Shots Matrix -->
+      <div class="section-title">
+        <span>Cinematic Shot Breakdown & Camera Geometry</span>
+        <span class="badge-count" id="shotCountBadge">0 Shots</span>
+      </div>
+      <div class="shots-grid" id="shotsGrid">
+        <div class="empty-placeholder" style="grid-column: 1 / -1;">Shot breakdown awaiting compilation via <code>compile_shots</code>.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentGraph = null;
+
+    async function fetchGraph() {
+      try {
+        const res = await fetch("/api/graph");
+        if (res.ok) {
+          const data = await res.json();
+          currentGraph = data;
+          renderGraph(data);
+          document.getElementById("syncStatus").textContent = "DAG Live Sync";
+        }
+      } catch (err) {
+        console.warn("Could not fetch /api/graph, polling local storage or waiting...", err);
+      }
+    }
+
+    function renderGraph(graph) {
+      if (!graph) return;
+
+      // Header, Stage & Title
+      if (graph.currentStage) {
+        document.getElementById("stagePill").textContent = graph.currentStage;
+      }
+
+      if (graph.brief) {
+        document.getElementById("projectTitle").textContent = `${graph.brief.company} — ${graph.brief.product}`;
+        document.getElementById("presetPill").textContent = graph.brief.preset || "indian-d2c-story";
+        document.getElementById("briefText").innerHTML = `
+          <strong>Company:</strong> ${escapeHtml(graph.brief.company)}<br>
+          <strong>Product:</strong> ${escapeHtml(graph.brief.product)}<br>
+          <strong>Goal:</strong> ${escapeHtml(graph.brief.goal)}<br>
+          <strong>Friction:</strong> ${escapeHtml(graph.brief.brandFriction || "Authentic emotional friction")}
+        `;
+      }
+
+      // Treatment Prose
+      const treatmentContainer = document.getElementById("treatmentContainer");
+      if (graph.treatment && graph.treatment.length > 0) {
+        treatmentContainer.innerHTML = graph.treatment
+          .map((para) => `<p class="treatment-paragraph">${escapeHtml(para).replace(/\n/g, "<br>")}</p>`)
+          .join("");
+      }
+
+      // Decision Lineage & Pruning
+      const lineageStack = document.getElementById("lineageStack");
+      const lockedNodes = graph.lockedNodes || [];
+      document.getElementById("nodeCountBadge").textContent = `${lockedNodes.length} Locked`;
+      document.getElementById("prunedBadge").textContent = `${graph.prunedCount || 0} Pruned`;
+
+      if (lockedNodes.length > 0) {
+        lineageStack.innerHTML = lockedNodes
+          .map((node) => `
+            <div class="lineage-node">
+              <div class="node-step-badge">STEP ${node.step} • OPTION ${escapeHtml(String(node.selectedOptionId || "1"))}</div>
+              <div class="node-content">
+                <div class="node-title">${escapeHtml(node.title)}</div>
+                <div class="node-desc">${escapeHtml(node.description || node.stage)}</div>
+              </div>
+            </div>
+          `)
+          .join("");
+      }
+
+      // Visual Assets (Characters, Environments, Product)
+      const assetsGrid = document.getElementById("assetsGrid");
+      const characters = graph.characters || (graph.assetRegistry && Object.values(graph.assetRegistry.characters)) || [];
+      const environments = graph.environments || (graph.assetRegistry && Object.values(graph.assetRegistry.environments)) || [];
+      const product = (graph.assetRegistry && graph.assetRegistry.product) || null;
+      const totalAssets = characters.length + environments.length + (product ? 1 : 0);
+      document.getElementById("assetCountBadge").textContent = `${totalAssets} Assets`;
+
+      if (totalAssets > 0) {
+        const charHtml = characters.map(c => `
+          <div class="asset-card">
+            <div class="asset-role">Character • ${escapeHtml(c.assetId)} • ${escapeHtml(c.role || "Lead")}</div>
+            <div class="asset-name">${escapeHtml(c.name)}</div>
+            <div class="asset-prompt">${escapeHtml(c.appearancePrompt)}</div>
+          </div>
+        `).join("");
+
+        const envHtml = environments.map(e => `
+          <div class="asset-card">
+            <div class="asset-role">Environment • ${escapeHtml(e.assetId)}</div>
+            <div class="asset-name">${escapeHtml(e.name)}</div>
+            <div class="asset-prompt">${escapeHtml(e.environmentPrompt)}</div>
+          </div>
+        `).join("");
+
+        const prodHtml = product ? `
+          <div class="asset-card" style="border-color: #3b82f6;">
+            <div class="asset-role" style="color: #60a5fa;">Hero Product • ${escapeHtml(product.assetId)}</div>
+            <div class="asset-name">${escapeHtml(product.name)}</div>
+            <div class="asset-prompt">${escapeHtml(product.productPrompt)}</div>
+          </div>
+        ` : "";
+
+        assetsGrid.innerHTML = charHtml + envHtml + prodHtml;
+      }
+
+      // Shots Matrix with Auto-Compiled Video Prompts
+      const shotsGrid = document.getElementById("shotsGrid");
+      const shots = graph.shots || [];
+      document.getElementById("shotCountBadge").textContent = `${shots.length} Shots`;
+
+      if (shots.length > 0) {
+        shotsGrid.innerHTML = shots
+          .map((s, idx) => `
+            <div class="shot-card">
+              <div class="shot-preview">
+                <div class="camera-pill">${escapeHtml(s.cameraAngle || "CAM_A_CENTER")} • ${escapeHtml(s.cameraMovement || "STATIC")}</div>
+                <div class="duration-pill">${s.duration || 5}s</div>
+                <span style="font-family: var(--font-mono); font-size: 11px; color: #71717a;">Scene ${s.order || idx + 1}</span>
+              </div>
+              <div class="shot-body">
+                <div class="shot-title">${escapeHtml(s.title || `Shot ${s.order || idx + 1}`)}</div>
+                <div class="shot-action">${escapeHtml(s.action)}</div>
+                ${(s.compiledVideoPrompt || s.imagePrompt) ? `
+                  <div class="shot-prompts"><strong>Compiled Video Prompt:</strong><br>${escapeHtml(s.compiledVideoPrompt || s.imagePrompt)}</div>
+                ` : ""}
+              </div>
+            </div>
+          `)
+          .join("");
+      }
+    }
+
+    function copyTreatment() {
+      if (!currentGraph || !currentGraph.treatment || currentGraph.treatment.length === 0) {
+        alert("No treatment available to copy yet.");
+        return;
+      }
+      const fullText = currentGraph.treatment.join("\n\n");
+      navigator.clipboard.writeText(fullText).then(() => {
+        alert("Master narrative treatment copied to clipboard!");
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Initial fetch and auto-polling every 2500ms
+    fetchGraph();
+    setInterval(fetchGraph, 2500);
+  </script>
+</body>
+</html>

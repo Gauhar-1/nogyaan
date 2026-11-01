@@ -1,0 +1,31 @@
+{
+  "id": "dev-product-launch",
+  "name": "Developer Product Launch & Tech Showcase",
+  "philosophy": "High-craft Engineering & Developer Friction Relief",
+  "description": "High-energy, hyper-relatable developer cinema showcasing painful production bugs, terminal flow states, and the sheer elegance of great developer tools.",
+  "language": {
+    "primary": "English with engineering cadence",
+    "tone": "Punchy, witty, authentic dev culture, zero corporate fluff",
+    "guidelines": "Reference real dev pain: yaml indentation hell, midnight on-call pager alarms, 200MB docker containers, local env discrepancies."
+  },
+  "narrativeThemes": [
+    "The 2 AM Production Bug Pager Nightmare",
+    "Legacy Spaghetti Code vs The Elegant Clean Architecture",
+    "Localhost Works Perfectly, But Kubernetes Replicas Crash",
+    "The 10x Engineer Who Writes 3 Lines of Code That Fixes Everything",
+    "Building In Public: From Bedroom Hackathon to Million-User Scale"
+  ],
+  "visualStyling": {
+    "lighting": "High-contrast dark mode neon rim lighting, glowing mechanical keyboard reflections, matrix green on obsidian black",
+    "colorPalette": "Zinc 950, electric emerald, cyan accent, muted slate",
+    "framing": "Fast macro rack-focuses onto terminal cursors, dynamic camera sweeps over server racks, split-screen micro-actions"
+  },
+  "branchingStructure": {
+    "option1": "The High-Stakes Incident (Suspenseful incident response turning into triumphant resolution)",
+    "option2": "The Deadpan Parody (Satirical contrast of bloated legacy enterprise tools)",
+    "option3": "The Kinetic Speedrun (High-cadence hacker montage synced to synthwave beats)",
+    "optionR": "Recalibrate (Explore an alternative developer persona)"
+  },
+  "defaultTaglineFormat": "Engineered for builders who hate wasting keystrokes."
+}
+

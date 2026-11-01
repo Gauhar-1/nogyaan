@@ -1,0 +1,47 @@
+{
+  "name": "ad-director-mcp",
+  "version": "0.1.0",
+  "description": "Interactive Storyboard & Ad Director MCP Server with DAG story branching, studio UI, and multi-preset narrative frameworks.",
+  "type": "module",
+  "bin": {
+    "ad-director-mcp": "./dist/cli.js",
+    "ad-director-server": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "presets",
+    "SKILL.md",
+    "src/ui"
+  ],
+  "scripts": {
+    "build": "tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/ui', {recursive:true}); fs.copyFileSync('src/ui/studio-app.html', 'dist/ui/studio-app.html'); try { fs.chmodSync('dist/cli.js', 0o755); fs.chmodSync('dist/index.js', 0o755); } catch(e){}\"",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build",
+    "test": "npm run build && node tests/run-verification.mjs && node tests/test-cli.mjs && node tests/test-stdio.mjs && node tests/test-system32-cwd.mjs",
+    "start": "node dist/index.js",
+    "dev": "tsc -w"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "storyboard",
+    "video-director",
+    "advertising",
+    "generative-video",
+    "claude",
+    "cursor"
+  ],
+  "author": "Antigravity Team",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.0",
+    "commander": "^13.1.0",
+    "open": "^10.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3"
+  }
+}

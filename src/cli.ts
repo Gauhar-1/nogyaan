@@ -1,0 +1,645 @@
+#!/usr/bin/env node
+
+/**
+ * @file src/cli.ts
+ * @description Cross-Platform CLI and DX Orchestrator for Ad Director MCP Server.
+ * Safely configures Claude Desktop (Standard + Windows MSIX Store), Cursor, and Claude Code
+ * with non-destructive JSON merges, timestamped backups, environment diagnostics, and automated rules deployment.
+ */
+
+import os from "node:os";
+import fs from "node:fs";
+import path from "node:path";
+import net from "node:net";
+import { fileURLToPath } from "node:url";
+import { Command } from "commander";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/**
+ * Resolves the package root directory relative to import.meta.url by searching upwards.
+ */
+export function getPackageRoot(): string {
+  let curr = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 5; i++) {
+    if (fs.existsSync(path.join(curr, "package.json"))) {
+      return curr;
+    }
+    const parent = path.dirname(curr);
+    if (parent === curr) break;
+    curr = parent;
+  }
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+// ============================================================================
+// 1. OS-Aware Config Path Resolution
+// ============================================================================
+
+/**
+ * Resolves standard platform-specific Claude Desktop configuration path.
+ * - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+ * - Windows: %APPDATA%/Claude/claude_desktop_config.json
+ * - Linux: ~/.config/Claude/claude_desktop_config.json
+ */
+export function getClaudeDesktopConfigPath(): string {
+  const home = os.homedir();
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+    return path.join(appData, "Claude", "claude_desktop_config.json");
+  } else if (process.platform === "darwin") {
+    return path.join(
+      home,
+      "Library",
+      "Application Support",
+      "Claude",
+      "claude_desktop_config.json"
+    );
+  } else {
+    const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+    return path.join(xdgConfig, "Claude", "claude_desktop_config.json");
+  }
+}
+
+/**
+ * Resolves MSIX / Windows Store virtualized Claude Desktop config paths:
+ * Inside %LOCALAPPDATA%/Packages, look for any directory starting with Claude_ (e.g. Claude_pzs8sxrjxfjjc),
+ * and target LocalCache/Roaming/Claude/claude_desktop_config.json inside it.
+ */
+export function getClaudeDesktopMsixConfigPaths(): string[] {
+  if (process.platform !== "win32") {
+    return [];
+  }
+
+  const localAppData =
+    process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  const packagesDir = path.join(localAppData, "Packages");
+
+  if (!fs.existsSync(packagesDir)) {
+    return [];
+  }
+
+  try {
+    const entries = fs.readdirSync(packagesDir, { withFileTypes: true });
+    const msixPaths: string[] = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith("Claude_")) {
+        const candidateDir = path.join(
+          packagesDir,
+          entry.name,
+          "LocalCache",
+          "Roaming",
+          "Claude"
+        );
+        if (fs.existsSync(candidateDir)) {
+          msixPaths.push(path.join(candidateDir, "claude_desktop_config.json"));
+        }
+      }
+    }
+
+    return msixPaths;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns all active Claude Desktop configuration targets:
+ * - The standard path (%APPDATA%/Claude/claude_desktop_config.json)
+ * - Any Windows MSIX virtualized paths (%LOCALAPPDATA%/Packages/Claude_[id]/LocalCache/Roaming/Claude/claude_desktop_config.json)
+ */
+export function getAllClaudeDesktopConfigTargets(): { name: string; path: string }[] {
+  const targets: { name: string; path: string }[] = [
+    { name: "Claude Desktop", path: getClaudeDesktopConfigPath() },
+  ];
+
+  const msixPaths = getClaudeDesktopMsixConfigPaths();
+  for (let i = 0; i < msixPaths.length; i++) {
+    const msixPath = msixPaths[i];
+    targets.push({
+      name:
+        msixPaths.length > 1
+          ? `Claude Desktop (MSIX Store #${i + 1})`
+          : "Claude Desktop (MSIX Store)",
+      path: msixPath,
+    });
+  }
+
+  return targets;
+}
+
+/**
+ * Resolves global Cursor user MCP configuration path (~/.cursor/mcp.json).
+ */
+export function getCursorGlobalConfigPath(): string {
+  return path.join(os.homedir(), ".cursor", "mcp.json");
+}
+
+/**
+ * Resolves project-local Cursor configuration path (./.cursor/mcp.json).
+ */
+export function getProjectCursorConfigPath(cwd: string = process.cwd()): string {
+  return path.join(cwd, ".cursor", "mcp.json");
+}
+
+/**
+ * Resolves project-local Claude Code configuration path (./.mcp.json).
+ */
+export function getProjectClaudeCodeConfigPath(cwd: string = process.cwd()): string {
+  return path.join(cwd, ".mcp.json");
+}
+
+/**
+ * Resolves project-local Cursor rule target (./.cursor/rules/ad-director.mdc).
+ */
+export function getProjectCursorRulePath(cwd: string = process.cwd()): string {
+  return path.join(cwd, ".cursor", "rules", "ad-director.mdc");
+}
+
+// ============================================================================
+// 2. Safe & Non-Destructive JSON Merge Engine
+// ============================================================================
+
+export interface ConfigOpResult {
+  path: string;
+  client: string;
+  status: "created" | "updated" | "removed" | "skipped" | "aborted";
+  backupPath?: string;
+  error?: string;
+}
+
+export interface McpServerEntry {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
+/**
+ * Non-destructively merges the "ad-director" entry into a target JSON config.
+ * - If file exists: validates JSON, creates timestamped backup in same folder, merges ONLY mcpServers["ad-director"].
+ * - If malformed: ABORTS immediately with error to protect user config.
+ * - If file does not exist: creates directory recursively and writes clean template.
+ */
+export function safeInjectMcpServer(
+  configPath: string,
+  clientName: string,
+  serverEntry: McpServerEntry
+): ConfigOpResult {
+  try {
+    const dir = path.dirname(configPath);
+
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, "utf-8");
+      let config: any;
+
+      // Malformed JSON check: DO NOT OVERWRITE! Abort!
+      try {
+        config = JSON.parse(raw);
+      } catch (err: any) {
+        return {
+          path: configPath,
+          client: clientName,
+          status: "aborted",
+          error: `CRITICAL: Malformed JSON syntax in ${configPath}: ${err.message}. Operation aborted to prevent loss of existing MCP servers.`,
+        };
+      }
+
+      if (typeof config !== "object" || config === null || Array.isArray(config)) {
+        return {
+          path: configPath,
+          client: clientName,
+          status: "aborted",
+          error: `Root JSON in ${configPath} is not an object. Operation aborted.`,
+        };
+      }
+
+      // Create timestamped backup before modifying
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const standardBackupPath = `${configPath}.bak`;
+      const timestampedBackupPath = `${configPath}.bak-${timestamp}`;
+
+      try {
+        fs.copyFileSync(configPath, standardBackupPath);
+        fs.copyFileSync(configPath, timestampedBackupPath);
+      } catch (backupErr: any) {
+        return {
+          path: configPath,
+          client: clientName,
+          status: "aborted",
+          error: `Failed to create safety backup at ${standardBackupPath}: ${backupErr.message}`,
+        };
+      }
+
+      // Ensure mcpServers object exists and merge only "ad-director"
+      if (
+        !config.mcpServers ||
+        typeof config.mcpServers !== "object" ||
+        Array.isArray(config.mcpServers)
+      ) {
+        config.mcpServers = {};
+      }
+
+      config.mcpServers["ad-director"] = serverEntry;
+
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+      return {
+        path: configPath,
+        client: clientName,
+        status: "updated",
+        backupPath: standardBackupPath,
+      };
+    } else {
+      // File does not exist yet: create directory and initialize cleanly
+      fs.mkdirSync(dir, { recursive: true });
+
+      const newConfig = {
+        mcpServers: {
+          "ad-director": serverEntry,
+        },
+      };
+
+      fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2), "utf-8");
+
+      return {
+        path: configPath,
+        client: clientName,
+        status: "created",
+      };
+    }
+  } catch (err: any) {
+    return {
+      path: configPath,
+      client: clientName,
+      status: "aborted",
+      error: `Unexpected error writing to ${configPath}: ${err.message}`,
+    };
+  }
+}
+
+/**
+ * Cleanly removes "ad-director" from a config file while preserving all other servers.
+ */
+export function safeRemoveMcpServer(
+  configPath: string,
+  clientName: string
+): ConfigOpResult {
+  try {
+    if (!fs.existsSync(configPath)) {
+      return {
+        path: configPath,
+        client: clientName,
+        status: "skipped",
+      };
+    }
+
+    const raw = fs.readFileSync(configPath, "utf-8");
+    let config: any;
+
+    try {
+      config = JSON.parse(raw);
+    } catch (err: any) {
+      return {
+        path: configPath,
+        client: clientName,
+        status: "aborted",
+        error: `Malformed JSON in ${configPath}: ${err.message}. Skipped removal.`,
+      };
+    }
+
+    if (config?.mcpServers && "ad-director" in config.mcpServers) {
+      // Backup before modifying
+      const standardBackupPath = `${configPath}.bak`;
+      fs.copyFileSync(configPath, standardBackupPath);
+
+      delete config.mcpServers["ad-director"];
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+      return {
+        path: configPath,
+        client: clientName,
+        status: "removed",
+        backupPath: standardBackupPath,
+      };
+    }
+
+    return {
+      path: configPath,
+      client: clientName,
+      status: "skipped",
+    };
+  } catch (err: any) {
+    return {
+      path: configPath,
+      client: clientName,
+      status: "aborted",
+      error: `Failed to remove from ${configPath}: ${err.message}`,
+    };
+  }
+}
+
+/**
+ * Copies SKILL.md into .cursor/rules/ad-director.mdc with proper MDC frontmatter.
+ */
+export function installCursorRule(cwd: string = process.cwd()): boolean {
+  try {
+    const pkgRoot = getPackageRoot();
+    const candidates = [
+      path.join(pkgRoot, "SKILL.md"),
+      path.resolve(cwd, "SKILL.md"),
+      path.resolve(__dirname, "SKILL.md"),
+      path.resolve(__dirname, "../SKILL.md"),
+      path.resolve(__dirname, "../../SKILL.md"),
+    ];
+
+    let skillContent = "";
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        skillContent = fs.readFileSync(c, "utf-8");
+        break;
+      }
+    }
+
+    if (!skillContent) {
+      console.warn("  ⚠ Warning: SKILL.md not found in package root; skipping Cursor rule installation.");
+      return false;
+    }
+
+    const targetRulePath = getProjectCursorRulePath(cwd);
+    const ruleDir = path.dirname(targetRulePath);
+    if (!fs.existsSync(ruleDir)) {
+      fs.mkdirSync(ruleDir, { recursive: true });
+    }
+
+    // Format proper .mdc rule format for Cursor Agent
+    const mdcHeader = `---
+description: Studio-Grade Ad Director FSM protocol with 1/2/3/R decision branching & Piyush Pandey storytelling
+globs: *
+alwaysApply: true
+---
+
+`;
+
+    // Remove existing YAML frontmatter if any, then prepend unified .mdc header
+    const sanitizedBody = skillContent.replace(/^---[\s\S]*?---\n*/, "");
+    fs.writeFileSync(targetRulePath, mdcHeader + sanitizedBody, "utf-8");
+    return true;
+  } catch (err: any) {
+    console.warn(`  ⚠ Warning: Could not install Cursor rule: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Tests if a given TCP port is available on localhost.
+ */
+export function checkPortAvailable(port: number = 4321): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => {
+      resolve(false);
+    });
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port);
+  });
+}
+
+// ============================================================================
+// 3. Commander CLI Program Definition
+// ============================================================================
+
+const program = new Command();
+
+program
+  .name("ad-director-mcp")
+  .description("Studio-Grade Ad Director & Storyboard MCP Server with DAG branching and visual canvas")
+  .version("0.1.0");
+
+// ----------------------------------------------------------------------------
+// Command: init (Default)
+// ----------------------------------------------------------------------------
+program
+  .command("init", { isDefault: true })
+  .description("Configure the Ad Director MCP server in Claude Desktop, Cursor, and Claude Code (Default)")
+  .option("--local", "Configure with local Node.js path to dist/index.js for active development/testing")
+  .option("--project", "Also configure project-local .cursor/mcp.json, .mcp.json, and install Cursor rules")
+  .action(async (options) => {
+    console.log("\n🎬 \x1b[1m\x1b[37mAd Director MCP — Client Injector & Installer\x1b[0m\n");
+
+    const isLocal = Boolean(options.local);
+    const isProject = Boolean(options.project);
+
+    // Resolve server command & args
+    let serverEntry: McpServerEntry;
+    if (isLocal) {
+      const projectRoot = getPackageRoot();
+      // Find absolute path to dist/index.js
+      let indexPath = path.resolve(__dirname, "index.js");
+      if (!fs.existsSync(indexPath)) {
+        const rootDist = path.resolve(projectRoot, "dist", "index.js");
+        if (fs.existsSync(rootDist)) {
+          indexPath = rootDist;
+        }
+      }
+
+      serverEntry = {
+        command: "node",
+        args: [indexPath],
+        env: {
+          AD_DIRECTOR_WORKSPACE: projectRoot,
+        },
+      };
+      console.log(`\x1b[36m• Running in Local Development mode (--local)\x1b[0m`);
+      console.log(`  Target:    \x1b[33mnode ${indexPath}\x1b[0m`);
+      console.log(`  Workspace: \x1b[33m${projectRoot}\x1b[0m\n`);
+    } else {
+      serverEntry = {
+        command: "npx",
+        args: ["-y", "ad-director-mcp", "serve"],
+      };
+      console.log(`\x1b[36m• Running in Production mode (npx)\x1b[0m`);
+      console.log(`  Target: \x1b[33mnpx -y ad-director-mcp serve\x1b[0m\n`);
+    }
+
+    const results: ConfigOpResult[] = [];
+
+    // 1. Claude Desktop (Standard %APPDATA% + Windows MSIX Store if present)
+    const claudeTargets = getAllClaudeDesktopConfigTargets();
+    for (const t of claudeTargets) {
+      results.push(safeInjectMcpServer(t.path, t.name, serverEntry));
+    }
+
+    // 2. Cursor Global
+    const cursorGlobalPath = getCursorGlobalConfigPath();
+    results.push(safeInjectMcpServer(cursorGlobalPath, "Cursor (Global)", serverEntry));
+
+    // 3. Project-Local (if --project flag passed)
+    if (isProject) {
+      const projectCursorPath = getProjectCursorConfigPath();
+      results.push(safeInjectMcpServer(projectCursorPath, "Cursor (Project)", serverEntry));
+
+      const claudeCodePath = getProjectClaudeCodeConfigPath();
+      results.push(safeInjectMcpServer(claudeCodePath, "Claude Code (Project)", serverEntry));
+
+      const ruleInstalled = installCursorRule();
+      if (ruleInstalled) {
+        console.log(`  \x1b[32m✔\x1b[0m \x1b[1mCursor Rule (.mdc):\x1b[0m Installed at ${getProjectCursorRulePath()}`);
+      }
+    }
+
+    // Terminal Output Summary
+    console.log("\x1b[1mConfiguration Results:\x1b[0m");
+    let hasAbort = false;
+    for (const r of results) {
+      if (r.status === "updated") {
+        console.log(
+          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Updated ${r.path} \x1b[90m(Backup: ${path.basename(r.backupPath || "")})\x1b[0m`
+        );
+      } else if (r.status === "created") {
+        console.log(
+          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Created new config at ${r.path}`
+        );
+      } else if (r.status === "aborted") {
+        hasAbort = true;
+        console.error(`  \x1b[31m✖\x1b[0m \x1b[1m${r.client}:\x1b[0m ${r.error}`);
+      }
+    }
+
+    console.log("\n" + "─".repeat(60) + "\n");
+    if (!hasAbort) {
+      console.log("\x1b[32m\x1b[1m✅ Installed! Restart Claude Desktop / Cursor and type:\x1b[0m");
+      console.log(`\x1b[37m"Direct an Indian D2C ad for QuickBiteQR using ad-director"\x1b[0m\n`);
+    } else {
+      console.log("\x1b[33m⚠ Some targets were skipped or aborted due to syntax errors.\x1b[0m\n");
+    }
+  });
+
+// ----------------------------------------------------------------------------
+// Command: doctor
+// ----------------------------------------------------------------------------
+program
+  .command("doctor")
+  .description("Verify system readiness, Node version, port 4321, and config file health")
+  .action(async () => {
+    console.log("\n🩺 \x1b[1m\x1b[37mAd Director MCP — System Diagnostics (Doctor)\x1b[0m\n");
+
+    // 1. Node.js Version Check (>= 18)
+    const nodeMajor = parseInt(process.versions.node.split(".")[0], 10);
+    if (nodeMajor >= 18) {
+      console.log(`  \x1b[32m✔\x1b[0m Node.js Runtime: v${process.versions.node} (>= 18 required)`);
+    } else {
+      console.log(`  \x1b[31m✖\x1b[0m Node.js Runtime: v${process.versions.node} is below required v18. Please upgrade Node.js.`);
+    }
+
+    // 2. Server Build Verification
+    let indexPath = path.resolve(__dirname, "index.js");
+    if (!fs.existsSync(indexPath)) {
+      const cwdDist = path.resolve(process.cwd(), "dist", "index.js");
+      if (fs.existsSync(cwdDist)) {
+        indexPath = cwdDist;
+      }
+    }
+
+    if (fs.existsSync(indexPath)) {
+      console.log(`  \x1b[32m✔\x1b[0m Server Build: Found entry point at ${indexPath}`);
+    } else {
+      console.log(`  \x1b[31m✖\x1b[0m Server Build: Missing ${indexPath}. Run 'npm run build' first.`);
+    }
+
+    // 3. Studio Web Server Port Check (4321)
+    const portFree = await checkPortAvailable(4321);
+    if (portFree) {
+      console.log(`  \x1b[32m✔\x1b[0m Port 4321: Available for visual Studio Canvas server`);
+    } else {
+      console.log(`  \x1b[33m⚠\x1b[0m Port 4321: In use (another instance of Ad Director Studio may be running)`);
+    }
+
+    // 4. Config Files Syntax Health
+    const configChecks = [
+      ...getAllClaudeDesktopConfigTargets(),
+      { name: "Cursor (Global)", path: getCursorGlobalConfigPath() },
+      { name: "Cursor (Project)", path: getProjectCursorConfigPath() },
+      { name: "Claude Code (Project)", path: getProjectClaudeCodeConfigPath() },
+    ];
+
+    console.log("\n\x1b[1mConfig File Health Checks:\x1b[0m");
+    for (const c of configChecks) {
+      if (fs.existsSync(c.path)) {
+        try {
+          const raw = fs.readFileSync(c.path, "utf-8");
+          const parsed = JSON.parse(raw);
+          const hasAdDirector = Boolean(parsed.mcpServers?.["ad-director"]);
+          console.log(
+            `  \x1b[32m✔\x1b[0m ${c.name}: Valid JSON at ${c.path} ${
+              hasAdDirector ? "\x1b[32m[ad-director configured]\x1b[0m" : "\x1b[90m[no ad-director]\x1b[0m"
+            }`
+          );
+        } catch (err: any) {
+          console.log(`  \x1b[31m✖\x1b[0m ${c.name}: Malformed JSON in ${c.path} (${err.message})`);
+        }
+      } else {
+        console.log(`  \x1b[90m○\x1b[0m ${c.name}: Not yet created at ${c.path}`);
+      }
+    }
+
+    console.log("\nDiagnostics complete.\n");
+  });
+
+// ----------------------------------------------------------------------------
+// Command: uninstall
+// ----------------------------------------------------------------------------
+program
+  .command("uninstall")
+  .description("Safely remove Ad Director MCP server from Claude Desktop and Cursor configs")
+  .option("--project", "Also remove from project-local .cursor/mcp.json and .mcp.json")
+  .action(async (options) => {
+    console.log("\n🧹 \x1b[1m\x1b[37mAd Director MCP — Uninstaller\x1b[0m\n");
+
+    const targets = [
+      ...getAllClaudeDesktopConfigTargets(),
+      { name: "Cursor (Global)", path: getCursorGlobalConfigPath() },
+    ];
+
+    if (options.project) {
+      targets.push({ name: "Cursor (Project)", path: getProjectCursorConfigPath() });
+      targets.push({ name: "Claude Code (Project)", path: getProjectClaudeCodeConfigPath() });
+
+      const rulePath = getProjectCursorRulePath();
+      if (fs.existsSync(rulePath)) {
+        try {
+          fs.unlinkSync(rulePath);
+          console.log(`  \x1b[32m✔\x1b[0m Removed Cursor rule at ${rulePath}`);
+        } catch {}
+      }
+    }
+
+    for (const t of targets) {
+      const res = safeRemoveMcpServer(t.path, t.name);
+      if (res.status === "removed") {
+        console.log(`  \x1b[32m✔\x1b[0m Removed 'ad-director' from ${t.path} (Backup: ${path.basename(res.backupPath || "")})`);
+      } else if (res.status === "skipped") {
+        console.log(`  \x1b[90m○\x1b[0m 'ad-director' was not present in ${t.path}`);
+      } else if (res.status === "aborted") {
+        console.error(`  \x1b[31m✖\x1b[0m ${res.error}`);
+      }
+    }
+
+    console.log("\nUninstallation finished. Restart Claude Desktop / Cursor.\n");
+  });
+
+// ----------------------------------------------------------------------------
+// Command: serve
+// ----------------------------------------------------------------------------
+program
+  .command("serve")
+  .description("Launch the Ad Director Stdio MCP server")
+  .action(async () => {
+    // Dynamically launch the index MCP server
+    await import("./index.js");
+  });
+
+program.parse(process.argv);
