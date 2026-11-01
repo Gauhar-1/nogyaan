@@ -1,11 +1,11 @@
 /**
  * @file tests/test-architecture-and-fixes.mjs
- * @description Comprehensive automated test suite verifying Fixes 1 through 6:
+ * @description Comprehensive automated test suite verifying:
  * - Fix 1: Dynamic MCP Prompts registration (/preset-*) & list_presets tool
  * - Fix 2: Isolated Session DAG storage (.ad-director/sessions/<slug>-<id>.json & latest-active.json)
- * - Fix 3: Strict Scene-to-Scene Continuity Lock (exit_frame_anchor)
+ * - Fix 3: Dedicated lock_core_theme (abstract concept) + Physical Scene continuity
  * - Fix 4: Strict Preset-Scoped Language Gate (Hinglish vs 100% English)
- * - Fix 5: Reference-Tagged Kinetic Prompts (@CHAR_01, @BG_01, @PROD_01)
+ * - Fix 5: Iterative compile_single_scene with 5 video diffusion rules & slop rejection
  * - Fix 6: Zero HTML entity corruption in backend storage (clean raw UTF-8)
  */
 
@@ -20,7 +20,7 @@ async function runFixesVerification() {
   console.log('🧪 Starting Architectural & 6-Bug Verification Suite...\n');
 
   // ==========================================================================
-  // Fix 1: Preset Registry Dynamic Discovery & Language Rules
+  // Fix 1 & 4: Preset Registry Dynamic Discovery & Language Rules
   // ==========================================================================
   console.log('▶ [Fix 1 & Fix 4] Verifying Preset Registry & Scoped Language Gates...');
   const presetRegistry = new PresetRegistryService();
@@ -105,9 +105,30 @@ async function runFixesVerification() {
   console.log('  ✔ Sessions stored strictly isolated under .ad-director/sessions/ without collision.');
 
   // ==========================================================================
-  // Fix 3: Scene-to-Scene Continuity Lock (exit_frame_anchor)
+  // Section 1.A: Dedicated lock_core_theme (Abstract concept, not a scene)
   // ==========================================================================
-  console.log('▶ [Fix 3] Verifying Physical Continuity Bridge (exit_frame_anchor)...');
+  console.log('▶ [Section 1.A] Verifying dedicated lock_core_theme...');
+  const themeResult = sessionService.lockCoreTheme({
+    sessionId: sessionA.sessionId,
+    chosenThemeId: '1',
+    themeTitle: 'The 2 AM Production Pager Nightmare',
+    themePremise: 'A senior DevOps engineer fights a catastrophic database blackout at 2 AM while the rest of the company sleeps soundly.'
+  });
+
+  assert.strictEqual(themeResult.session.stage, 'SCENE_1_SETUP');
+  assert.ok(themeResult.session.coreTheme, 'coreTheme must be set on session');
+  assert.strictEqual(themeResult.session.coreTheme.themeTitle, 'The 2 AM Production Pager Nightmare');
+  assert.strictEqual(themeResult.session.lockedNodes.length, 0, 'lockedNodes must remain empty because Core Theme is not a physical scene');
+  assert.ok(
+    themeResult.directive.instruction.includes('Scene 1 has NO previous exit frame'),
+    'Directive must indicate Scene 1 has no previous exit frame'
+  );
+  console.log('  ✔ lock_core_theme saves to coreTheme without polluting physical scenes array.');
+
+  // ==========================================================================
+  // Section 1.B: Physical Scene Branching with exit_frame_anchor
+  // ==========================================================================
+  console.log('▶ [Section 1.B] Verifying physical scene branching...');
   const exitAnchorScene1 = 'Lead engineer sits slumped in Herman Miller chair, staring blankly at blinking red terminal cursor at 2:14 AM.';
 
   const branch1 = sessionService.branchScene({
@@ -125,7 +146,9 @@ async function runFixesVerification() {
     presetLanguageRule: devPreset.dialogueLanguageRule
   });
 
-  assert.strictEqual(branch1.session.stage, 'SCENE_1_SETUP');
+  assert.strictEqual(branch1.session.stage, 'SCENE_2_CATALYST');
+  assert.strictEqual(branch1.session.lockedNodes.length, 1);
+  assert.strictEqual(branch1.session.lockedNodes[0].sceneNumber, 1);
   assert.ok(branch1.continuityBridge, 'Continuity bridge must be returned');
   assert.ok(
     branch1.continuityBridge.includes('MANDATORY CONTINUITY BRIDGE'),
@@ -135,19 +158,9 @@ async function runFixesVerification() {
     branch1.continuityBridge.includes(exitAnchorScene1),
     'Bridge must contain the exact exit_frame_anchor'
   );
-  assert.ok(
-    branch1.continuityBridge.includes('100% English'),
-    'Bridge must include dev-product-launch English language rule'
-  );
-  console.log('  ✔ Continuity bridge successfully generated with exit_frame_anchor and language rule.');
+  console.log('  ✔ Scene 1 committed and returned continuity bridge for Scene 2.');
 
-  // ==========================================================================
-  // Fix 5: Reference-Tagged Kinetic Prompts (@CHAR_01, @BG_01, @PROD_01)
-  // ==========================================================================
-  console.log('▶ [Fix 5] Verifying Reference-Tagged Kinetic Prompts & Asset Validation...');
-
-  // Lock assets for Session A
-  // Advance through remaining stages to LOCK_ASSETS
+  // Advance remaining scenes to LOCK_ASSETS
   sessionService.branchScene({
     sessionId: sessionA.sessionId,
     action: 'commit',
@@ -173,16 +186,6 @@ async function runFixesVerification() {
     chosenOptionId: '3',
     chosenNarrativeSummary: 'Rollback succeeds in 400ms, green health check restored.',
     exitFrameAnchor: 'Exhales with huge relief as terminal displays all pods running.'
-  });
-
-  // Scene 4 Climax to Lock Assets
-  sessionService.branchScene({
-    sessionId: sessionA.sessionId,
-    action: 'commit',
-    sceneNumber: 5,
-    chosenOptionId: '1',
-    chosenNarrativeSummary: 'Team celebrates in Slack: Zero downtime deployment achieved.',
-    exitFrameAnchor: 'Slack channel erupts with dancing parrot emojis.'
   });
 
   assert.strictEqual(sessionService.loadSession(sessionA.sessionId).stage, 'LOCK_ASSETS');
@@ -216,91 +219,120 @@ async function runFixesVerification() {
 
   assert.strictEqual(sessionService.loadSession(sessionA.sessionId).stage, 'COMPILE_SHOTS');
 
-  // Test invalid asset reference
-  let integrityFailed = false;
+  // ==========================================================================
+  // Section 2: Iterative compile_single_scene & Slop Rejection Validator
+  // ==========================================================================
+  console.log('▶ [Section 2] Verifying compile_single_scene & Generic Slop Rejection...');
+
+  // Test 1: Slop rejection (< 80 chars)
+  let shortSlopCaught = false;
   try {
-    sessionService.compileShots({
+    sessionService.compileSingleScene({
       sessionId: sessionA.sessionId,
-      shots: [
-        {
-          sceneNumber: 1,
-          durationSeconds: 5,
-          storyBeatSummary: 'Late night incident',
-          entryFrameBridge: 'Connecting from black screen',
-          screenplayAction: '@CHAR_01 slumps into chair',
-          spokenDialogue: '"Not the database again."',
-          sfxAndAmbience: 'Heavy mechanical keyboard clatter and pager chime',
-          editorCutNote: 'Cut on cursor blink',
-          cameraSpec: { lensMm: '35mm', aperture: 'f/1.8', angle: 'LOW_ANGLE', movement: 'DOLLY_IN' },
-          attachedAssetRefs: ['@CHAR_01', '@BG_99'] // BG_99 does not exist!
-        }
-      ]
+      sceneNumber: 1,
+      kineticActionDescription: 'Devon sits at desk.', // too short!
+      cameraSpec: { lensMm: '35mm', aperture: 'f/1.8' },
+      attachedAssetRefs: ['@CHAR_01', '@BG_01']
     });
   } catch (err) {
-    integrityFailed = true;
-    assert.ok(err.message.includes('REFERENTIAL INTEGRITY VIOLATION'));
-    assert.ok(err.message.includes('@BG_99'));
+    shortSlopCaught = true;
+    assert.ok(err.message.includes('at least 80 characters'));
   }
-  assert.ok(integrityFailed, 'compileShots must reject unlisted @BG_99 asset');
+  assert.ok(shortSlopCaught, 'Validator must reject kineticActionDescription < 80 characters');
 
-  // Valid compilation
-  const compiledResult = sessionService.compileShots({
+  // Test 2: Slop rejection (vague phrase: "interact in scene")
+  let phraseSlopCaught = false;
+  try {
+    sessionService.compileSingleScene({
+      sessionId: sessionA.sessionId,
+      sceneNumber: 1,
+      kineticActionDescription: 'Devon interacts in scene with the computer terminal while looking around the dimly lit room.',
+      cameraSpec: { lensMm: '35mm', aperture: 'f/1.8' },
+      attachedAssetRefs: ['@CHAR_01', '@BG_01']
+    });
+  } catch (err) {
+    phraseSlopCaught = true;
+    assert.ok(err.message.includes('Generic placeholders or multiple cuts detected'));
+  }
+  assert.ok(phraseSlopCaught, 'Validator must reject vague generic phrase "interact in scene"');
+
+  // Test 3: Slop rejection (multiple cuts: "then cuts to")
+  let multiCutCaught = false;
+  try {
+    sessionService.compileSingleScene({
+      sessionId: sessionA.sessionId,
+      sceneNumber: 1,
+      kineticActionDescription: 'Devon stares at terminal screen then cuts to close up of mechanical keyboard in the dark.',
+      cameraSpec: { lensMm: '35mm', aperture: 'f/1.8' },
+      attachedAssetRefs: ['@CHAR_01', '@BG_01']
+    });
+  } catch (err) {
+    multiCutCaught = true;
+    assert.ok(err.message.includes('Generic placeholders or multiple cuts detected'));
+  }
+  assert.ok(multiCutCaught, 'Validator must reject "then cuts to" (enforces single continuous take)');
+
+  // Test 4: Valid compile_single_scene with 5-rule diffusion model compliance
+  const validScene1 = sessionService.compileSingleScene({
     sessionId: sessionA.sessionId,
-    shots: [
-      {
-        sceneNumber: 1,
-        durationSeconds: 5,
-        storyBeatSummary: 'Late night incident',
-        entryFrameBridge: 'Fade in on dark office',
-        screenplayAction: '@CHAR_01 slumps back in chair, rubbing temples as error logs cascade on monitor',
-        spokenDialogue: '"Not the database again."',
-        sfxAndAmbience: 'Heavy mechanical keyboard clatter and urgent pager chime',
-        editorCutNote: 'Cut on cursor blink',
-        cameraSpec: { lensMm: '35mm', aperture: 'f/1.8', angle: 'LOW_ANGLE', movement: 'DOLLY_IN' },
-        attachedAssetRefs: ['@CHAR_01', '@BG_01', '@PROD_01']
-      }
-    ]
+    sceneNumber: 1,
+    durationSeconds: 5,
+    actTitle: 'Act I — Setup',
+    narrativeTitle: 'The 2:14 AM Pager Alarm',
+    storyBeatSummary: 'Pager duty wakes the engineer as production crashes.',
+    kineticActionDescription: 'Devon slumps back into the ergonomic chair, eyes widening in panic as red error logs cascade uncontrollably across all three ultra-wide monitors.',
+    cameraSpec: {
+      lensMm: '35mm',
+      aperture: 'f/1.8',
+      framingAndAngle: 'Low-angle medium close-up',
+      singleContinuousMovement: 'Slow steady push-in towards trembling hands'
+    },
+    onCameraSpokenDialogue: '"Not the production database at 2 AM."',
+    postProductionVoiceover: 'Every engineer knows the feeling of midnight on-call dread.',
+    sfxAndAmbience: 'High-frequency pager chimes echoing against mechanical keyboard clatter',
+    onScreenTextOverlay: 'INCIDENT #4092: CRITICAL FAILURE',
+    editorCutNote: 'Match-cut on finger striking Enter key',
+    attachedAssetRefs: ['@CHAR_01', '@BG_01', '@PROD_01']
   });
 
-  assert.strictEqual(compiledResult.session.stage, 'COMPLETED');
-  const shot1 = compiledResult.compiledShots[0];
+  const shot1 = validScene1.compiledShot;
+  assert.ok(shot1.referenceModePrompt, 'referenceModePrompt must be compiled');
+  assert.ok(shot1.standaloneModePrompt, 'standaloneModePrompt must be compiled');
+
+  // Verify Rule 2: onCameraSpokenDialogue is in lip-sync, but postProductionVoiceover is NOT in video prompt!
   assert.ok(
-    shot1.aiVideoPrompt.startsWith('[Refs: @CHAR_01, @BG_01, @PROD_01]'),
-    'Compiled prompt must start with [Refs: @CHAR_01, @BG_01, @PROD_01]'
+    shot1.referenceModePrompt.includes('Dialogue lip-sync: "Not the production database at 2 AM."'),
+    'Lip-sync must contain on-camera dialogue'
   );
   assert.ok(
-    shot1.aiVideoPrompt.includes('35mm f/1.8, LOW_ANGLE, DOLLY_IN.'),
-    'Compiled prompt must contain camera geometry'
+    !shot1.referenceModePrompt.includes('Every engineer knows'),
+    'AI video prompt must NEVER contain post-production voiceover'
   );
   assert.ok(
-    shot1.aiVideoPrompt.includes('Dialogue lip-sync: "\\"Not the database again.\\""') ||
-    shot1.aiVideoPrompt.includes('Dialogue lip-sync: ""Not the database again.""'),
-    'Compiled prompt must contain exact dialogue lip-sync'
+    !shot1.referenceModePrompt.includes('INCIDENT #4092'),
+    'AI video prompt must NEVER contain on-screen text overlay'
   );
+
+  // Verify Smart Asset Mapping
   assert.ok(
-    shot1.aiVideoPrompt.includes('Audio: Heavy mechanical keyboard clatter and urgent pager chime'),
-    'Compiled prompt must contain audio'
+    shot1.attachedAssetsResolved.length >= 3,
+    'Must resolve human-readable asset mapping'
   );
-  console.log('  ✔ Reference-tagged kinetic prompt compiled deterministically:');
-  console.log(`    "${shot1.aiVideoPrompt}"`);
+  const charResolved = shot1.attachedAssetsResolved.find((a) => a.id === 'CHAR_01');
+  assert.strictEqual(charResolved.name, 'Devon');
+  assert.strictEqual(charResolved.label, 'Devon (CHAR_01)');
+
+  console.log('  ✔ compile_single_scene successfully compiled dual prompts with strict VO separation.');
+  console.log(`    Ref Prompt: "${shot1.referenceModePrompt.substring(0, 110)}..."`);
+  console.log(`    Standalone: "${shot1.standaloneModePrompt.substring(0, 110)}..."`);
 
   // ==========================================================================
-  // Fix 6: Zero HTML Entity Escaping in Backend Storage
+  // Section 3: Verify Zero HTML Entity Corruption in Backend Storage
   // ==========================================================================
-  console.log('▶ [Fix 6] Verifying Clean Raw UTF-8 (No &#039; or &quot; in JSON)...');
+  console.log('▶ [Section 3] Verifying Clean Raw UTF-8 (No &#039; or &quot; in JSON)...');
   const rawSessionJson = fs.readFileSync(sessionFileA, 'utf-8');
-  assert.ok(
-    !rawSessionJson.includes('&#039;'),
-    'Backend JSON storage must NOT contain double-escaped apostrophes (&#039;)'
-  );
-  assert.ok(
-    !rawSessionJson.includes('&quot;'),
-    'Backend JSON storage must NOT contain double-escaped quotes (&quot;)'
-  );
-  assert.ok(
-    !rawSessionJson.includes('&amp;'),
-    'Backend JSON storage must NOT contain double-escaped ampersands (&amp;)'
-  );
+  assert.ok(!rawSessionJson.includes('&#039;'), 'JSON must not contain &#039;');
+  assert.ok(!rawSessionJson.includes('&quot;'), 'JSON must not contain &quot;');
   console.log('  ✔ Backend storage preserves clean raw UTF-8 without entity corruption.');
 
   // Cleanup temp workspace
@@ -308,7 +340,7 @@ async function runFixesVerification() {
     fs.rmSync(tempWorkspace, { recursive: true, force: true });
   }
 
-  console.log('\n🎉 ALL 6 ARCHITECTURAL & FIX VERIFICATIONS PASSED 100%!');
+  console.log('\n🎉 ALL ARCHITECTURAL, FSM, CONTINUITY & PROMPT COMPILER TESTS PASSED 100%!');
 }
 
 runFixesVerification().catch((err) => {

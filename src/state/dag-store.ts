@@ -536,6 +536,29 @@ export class DAGStore {
   }
 
   /**
+   * Locks the overarching Core Campaign Premise and advances CORE_THEME -> SCENE_1_SETUP.
+   */
+  public lockCoreTheme(input: {
+    chosenThemeId: "1" | "2" | "3" | string;
+    themeTitle: string;
+    themePremise: string;
+    nextOptions?: NarrativeOption[];
+  }): StoryGraph {
+    validateNoCameraJargon([input.themeTitle, input.themePremise, input.nextOptions]);
+    const graph = this.load();
+    if (graph.currentStage !== "CORE_THEME") {
+      throw new Error(
+        `FSM STAGE VIOLATION: lock_core_theme can only be called during CORE_THEME stage (current: ${graph.currentStage}).`
+      );
+    }
+    graph.currentStage = "SCENE_1_SETUP";
+    graph.prunedCount += 2;
+    graph.pendingOptions = input.nextOptions || [];
+    this.save(graph);
+    return graph;
+  }
+
+  /**
    * Task 1.2, 1.3, 1.4: Strict Branch Scene execution.
    * Handles 'commit' and 'regenerate' modes with state pruning and FSM stage locking.
    */

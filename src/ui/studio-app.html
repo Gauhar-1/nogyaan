@@ -3,23 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ad Director Studio — 3-Zone Production Bible</title>
+  <title>Ad Director Studio — Director's Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090A0F;
-      --card-bg: #12151E;
-      --card-hover: #171B26;
-      --border: #222634;
-      --border-accent: #333A4D;
-      --text: #F1F5F9;
-      --text-muted: #94A3B8;
-      --text-dim: #64748B;
-      --accent: #10B981;
-      --accent-glow: rgba(16, 185, 129, 0.15);
+      --bg: #090A0D;
+      --surface-elevated: #11131A;
+      --surface-secondary: #0E1017;
+      --surface-highlight: #171A24;
+      --border: #1E2230;
+      --border-focus: #2E364D;
+      --text-primary: #F3F4F6;
+      --text-secondary: #9CA3AF;
+      --text-muted: #6B7280;
+      --accent-emerald: #10B981;
+      --accent-emerald-dim: rgba(16, 185, 129, 0.12);
       --accent-indigo: #6366F1;
+      --accent-indigo-dim: rgba(99, 102, 241, 0.12);
       --accent-amber: #F59E0B;
-      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --accent-amber-dim: rgba(245, 158, 11, 0.12);
+      --accent-cyan: #06B6D4;
+      --accent-cyan-dim: rgba(6, 182, 212, 0.12);
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;
     }
 
     * {
@@ -30,7 +38,7 @@
 
     body {
       background-color: var(--bg);
-      color: var(--text);
+      color: var(--text-primary);
       font-family: var(--font-sans);
       min-height: 100vh;
       display: flex;
@@ -39,317 +47,357 @@
       line-height: 1.5;
     }
 
-    /* Top Sticky Header */
+    /* Fixed Top Header (56px) */
     header {
-      height: 60px;
+      height: 56px;
       border-bottom: 1px solid var(--border);
-      background-color: rgba(9, 10, 15, 0.95);
+      background-color: rgba(9, 10, 13, 0.96);
       backdrop-filter: blur(12px);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 28px;
+      padding: 0 24px;
       position: sticky;
       top: 0;
       z-index: 100;
     }
 
-    .brand-area {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .logo-badge {
-      width: 32px;
-      height: 32px;
-      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-      color: #090A0F;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 15px;
-      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-    }
-
-    .brand-title {
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-      color: #FFFFFF;
-    }
-
-    .pill {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 4px;
-      letter-spacing: 0.2px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .pill-session {
-      background: #171B26;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-    }
-
-    .pill-preset {
-      background: rgba(99, 102, 241, 0.12);
-      border: 1px solid rgba(99, 102, 241, 0.35);
-      color: #818CF8;
-    }
-
-    .pill-stage {
-      background: var(--accent-glow);
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      color: #34D399;
-    }
-
-    .pill-pruned {
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.35);
-      color: #FBBF24;
-    }
-
-    .header-actions {
+    .brand-section {
       display: flex;
       align-items: center;
       gap: 12px;
     }
 
-    .btn {
-      font-family: var(--font-sans);
-      font-size: 12px;
-      font-weight: 600;
-      padding: 6px 14px;
+    .logo-mark {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+      color: #090A0D;
       border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 13px;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+    }
+
+    .app-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #FFFFFF;
+      text-transform: uppercase;
+    }
+
+    .pill-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface-elevated);
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pill-preset {
+      border-color: rgba(99, 102, 241, 0.35);
+      background: var(--accent-indigo-dim);
+      color: #A5B4FC;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Mode Switcher segmented control */
+    .segmented-control {
+      background: #0E1017;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      padding: 2px;
+    }
+
+    .segment-btn {
+      font-family: var(--font-sans);
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
       transition: all 0.15s ease;
-      border: 1px solid transparent;
     }
 
-    .btn-secondary {
-      background: #1A1F2C;
-      color: var(--text);
-      border-color: var(--border);
-    }
-
-    .btn-secondary:hover {
-      background: #22283A;
-      border-color: var(--border-accent);
-    }
-
-    .btn-copy {
-      background: #1E293B;
-      color: #38BDF8;
-      border-color: rgba(56, 189, 248, 0.3);
-    }
-
-    .btn-copy:hover {
-      background: rgba(56, 189, 248, 0.15);
-      border-color: #38BDF8;
-    }
-
-    .btn-copy-emerald {
-      background: #064E3B;
-      color: #34D399;
-      border-color: rgba(52, 211, 153, 0.4);
-    }
-
-    .btn-copy-emerald:hover {
-      background: #047857;
+    .segment-btn.active {
+      background: var(--surface-highlight);
       color: #FFFFFF;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     }
 
-    /* Main Container */
-    main {
-      max-width: 1560px;
-      margin: 0 auto;
-      padding: 24px 28px 60px 28px;
+    .btn-ghost {
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--surface-elevated);
+      color: var(--text-primary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-ghost:hover {
+      background: var(--surface-highlight);
+      border-color: var(--border-focus);
+    }
+
+    /* 2-Pane Split Workbench Grid */
+    .workbench-grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      min-height: calc(100vh - 56px);
       width: 100%;
+    }
+
+    @media (min-width: 1500px) {
+      .workbench-grid {
+        grid-template-columns: 380px 1fr;
+      }
+    }
+
+    @media (max-width: 1000px) {
+      .workbench-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* LEFT PANE (30% Sticky Scroll) */
+    .left-pane {
+      background: #0B0D12;
+      border-right: 1px solid var(--border);
+      height: calc(100vh - 56px);
+      position: sticky;
+      top: 56px;
+      overflow-y: auto;
+      padding: 22px 20px;
       display: flex;
       flex-direction: column;
-      gap: 36px;
+      gap: 24px;
     }
 
-    /* Section Styling */
-    .zone-section {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .zone-header {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 10px;
-    }
-
-    .zone-title {
-      font-size: 16px;
+    .pane-section-header {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
       font-weight: 700;
-      letter-spacing: -0.2px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      color: #FFFFFF;
+      gap: 8px;
     }
 
-    .zone-badge {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--accent);
-      background: var(--accent-glow);
-      padding: 2px 8px;
-      border-radius: 4px;
-    }
-
-    .zone-desc {
-      font-size: 13px;
-      color: var(--text-dim);
-    }
-
-    /* ZONE 1: Narrative Arc */
-    .brief-card {
-      background: var(--card-bg);
+    /* Core Campaign Card */
+    .campaign-card {
+      background: var(--surface-elevated);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 18px 22px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
 
-    .brief-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 16px;
-    }
-
-    .brief-item {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .brief-label {
-      font-size: 11px;
-      font-family: var(--font-mono);
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .brief-value {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text);
-    }
-
-    .narrative-flow {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 16px;
-      position: relative;
-    }
-
-    .beat-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px 18px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      position: relative;
-      transition: border-color 0.15s ease;
-    }
-
-    .beat-card:hover {
-      border-color: var(--border-accent);
-    }
-
-    .beat-header {
+    .campaign-brand-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
-    .beat-number {
-      font-family: var(--font-mono);
-      font-size: 11px;
+    .campaign-brand-title {
+      font-size: 15px;
       font-weight: 700;
-      color: #38BDF8;
-      background: rgba(56, 189, 248, 0.1);
-      padding: 2px 8px;
-      border-radius: 4px;
+      color: #FFFFFF;
     }
 
-    .beat-option-tag {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--text-dim);
+    .campaign-product {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
     }
 
-    .beat-summary {
-      font-size: 13.5px;
-      color: var(--text);
+    .campaign-premise-box {
+      background: #08090D;
+      border-left: 2px solid var(--accent-emerald);
+      padding: 10px 12px;
+      border-radius: 0 4px 4px 0;
+      font-size: 12.5px;
+      color: #E2E8F0;
       line-height: 1.5;
     }
 
-    .beat-bridge {
-      background: #0E121B;
-      border-left: 3px solid #6366F1;
-      padding: 8px 12px;
-      border-radius: 0 4px 4px 0;
-      font-size: 12px;
-      color: #A5B4FC;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-    }
-
-    .beat-bridge-label {
+    .premise-tag {
       font-family: var(--font-mono);
       font-size: 10px;
-      text-transform: uppercase;
-      color: #818CF8;
       font-weight: 700;
+      text-transform: uppercase;
+      color: var(--accent-emerald);
+      margin-bottom: 4px;
+      display: block;
     }
 
-    /* ZONE 2: Asset Bible Grid */
-    .asset-instruction-banner {
-      background: rgba(99, 102, 241, 0.08);
-      border: 1px dashed rgba(99, 102, 241, 0.3);
-      border-radius: 6px;
-      padding: 10px 16px;
-      font-size: 13px;
-      color: #C7D2FE;
+    /* Vertical Connected Act Timeline */
+    .act-timeline {
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .act-node {
+      display: flex;
+      gap: 14px;
+      position: relative;
+      padding-bottom: 24px;
+      cursor: pointer;
+    }
+
+    .act-node:last-child {
+      padding-bottom: 0;
+    }
+
+    /* Vertical line connecting nodes */
+    .act-node:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 11px;
+      top: 24px;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+
+    .act-step-indicator {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--surface-secondary);
+      border: 2px solid var(--border);
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      z-index: 2;
+      flex-shrink: 0;
+      transition: all 0.2s ease;
     }
 
-    .asset-grid {
+    .act-node.completed .act-step-indicator {
+      border-color: var(--accent-emerald);
+      background: var(--accent-emerald-dim);
+      color: var(--accent-emerald);
+    }
+
+    .act-node:hover .act-step-indicator {
+      border-color: #60A5FA;
+      color: #60A5FA;
+    }
+
+    .act-node-content {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+    }
+
+    .act-node-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .act-node-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .act-duration-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      background: #0E1017;
+      padding: 1px 6px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+    }
+
+    .act-node-summary {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* RIGHT PANE (70% Scrollable Workspace) */
+    .right-pane {
+      padding: 28px 36px 80px 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 36px;
+      background: var(--bg);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #FFFFFF;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* SECTION 1: Production Asset Bible (3-Column) */
+    .asset-bible-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 18px;
+      gap: 16px;
     }
 
-    @media (max-width: 1100px) {
-      .asset-grid {
+    @media (max-width: 1200px) {
+      .asset-bible-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -360,194 +408,309 @@
       gap: 12px;
     }
 
-    .asset-col-header {
-      font-size: 13px;
-      font-weight: 700;
+    .asset-col-title {
       font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
 
     .asset-card {
-      background: var(--card-bg);
+      background: var(--surface-elevated);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px;
+      border-radius: 7px;
+      padding: 14px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      position: relative;
+      gap: 10px;
+      transition: border-color 0.15s ease;
     }
 
-    .asset-card-top {
+    .asset-card:hover {
+      border-color: var(--border-focus);
+    }
+
+    .asset-card-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
-    .asset-tag {
+    .asset-id-badge {
       font-family: var(--font-mono);
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
-      padding: 3px 8px;
+      padding: 2px 7px;
       border-radius: 4px;
     }
 
-    .asset-tag-char {
-      background: rgba(16, 185, 129, 0.15);
+    .asset-id-char {
+      background: var(--accent-emerald-dim);
       border: 1px solid rgba(16, 185, 129, 0.4);
       color: #34D399;
     }
 
-    .asset-tag-bg {
-      background: rgba(56, 189, 248, 0.15);
-      border: 1px solid rgba(56, 189, 248, 0.4);
-      color: #38BDF8;
+    .asset-id-bg {
+      background: var(--accent-cyan-dim);
+      border: 1px solid rgba(6, 182, 212, 0.4);
+      color: #22D3EE;
     }
 
-    .asset-tag-prod {
-      background: rgba(245, 158, 11, 0.15);
+    .asset-id-prod {
+      background: var(--accent-amber-dim);
       border: 1px solid rgba(245, 158, 11, 0.4);
       color: #FBBF24;
     }
 
-    .asset-name {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text);
+    .asset-role-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
     }
 
-    .asset-detail {
-      font-size: 12.5px;
-      color: var(--text-muted);
+    .asset-name {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .asset-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
       line-height: 1.45;
     }
 
-    /* ZONE 3: Two-Column Screenplay & Video Prompt Matrix */
-    .timeline-container {
+    .btn-asset-copy {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      transition: all 0.15s ease;
+      margin-top: 2px;
+    }
+
+    .btn-asset-copy:hover {
+      background: var(--surface-highlight);
+      color: var(--text-primary);
+      border-color: var(--border-focus);
+    }
+
+    .btn-asset-copy.copied {
+      background: var(--accent-emerald-dim);
+      border-color: var(--accent-emerald);
+      color: #34D399;
+    }
+
+    /* SECTION 2: Scene-by-Scene Production Matrix */
+    .scenes-stack {
       display: flex;
       flex-direction: column;
       gap: 24px;
     }
 
-    .scene-split-card {
-      background: var(--card-bg);
+    .scene-workbench-card {
+      background: var(--surface-elevated);
       border: 1px solid var(--border);
       border-radius: 8px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
       overflow: hidden;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    @media (max-width: 980px) {
-      .scene-split-card {
+    .scene-workbench-card.highlight-pulse {
+      border-color: var(--accent-emerald);
+      box-shadow: 0 0 24px rgba(16, 185, 129, 0.3);
+    }
+
+    /* Scene Card Header Bar */
+    .scene-card-topbar {
+      background: #0E1017;
+      border-bottom: 1px solid var(--border);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .scene-ident {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .scene-badge-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      background: #1F2433;
+      color: #60A5FA;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .scene-narrative-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .scene-camera-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .meta-pill {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--text-secondary);
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    /* 2-Column Internal Split inside each Scene Card */
+    .scene-internal-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    @media (max-width: 1050px) {
+      .scene-internal-split {
         grid-template-columns: 1fr;
       }
     }
 
-    /* Left Column: Screenplay */
-    .col-screenplay {
-      padding: 20px 24px;
+    /* Left Internal Column: Director & Editor Guide */
+    .internal-col-guide {
+      padding: 18px 20px;
       border-right: 1px solid var(--border);
+      background: #0F121A;
       display: flex;
       flex-direction: column;
       gap: 14px;
-      background: #11141D;
     }
 
-    .screenplay-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .scene-title-badge {
-      font-size: 14px;
-      font-weight: 700;
-      color: #FFFFFF;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .duration-pill {
+    .guide-label {
       font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--text-dim);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    .screenplay-beat {
+    .visual-blocking-text {
       font-size: 13px;
-      color: #CBD5E1;
-      font-style: italic;
-    }
-
-    .screenplay-bridge-box {
-      background: #090B10;
-      border: 1px solid #1E2330;
-      padding: 8px 12px;
-      border-radius: 5px;
-      font-size: 12px;
-      color: #94A3B8;
-    }
-
-    .screenplay-action-text {
-      font-size: 13.5px;
-      color: var(--text);
+      color: var(--text-primary);
       line-height: 1.55;
     }
 
-    .dialogue-box {
-      background: rgba(16, 185, 129, 0.06);
-      border-left: 3px solid #10B981;
-      padding: 10px 14px;
-      border-radius: 0 6px 6px 0;
+    /* Audio Track Badges */
+    .audio-breakdown-box {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 8px;
     }
 
-    .dialogue-speaker {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      text-transform: uppercase;
-      font-weight: 700;
-      color: #34D399;
+    .audio-track-item {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 8px 10px;
+      border-radius: 5px;
+      font-size: 12px;
     }
 
-    .dialogue-text {
-      font-size: 13.5px;
-      font-weight: 600;
+    .track-lipsync {
+      background: rgba(16, 185, 129, 0.08);
+      border-left: 2px solid var(--accent-emerald);
       color: #E2E8F0;
     }
 
-    .cut-note-box {
-      background: rgba(245, 158, 11, 0.06);
-      border: 1px dashed rgba(245, 158, 11, 0.25);
-      padding: 8px 12px;
+    .track-vo {
+      background: rgba(99, 102, 241, 0.08);
+      border-left: 2px solid var(--accent-indigo);
+      color: #C7D2FE;
+    }
+
+    .track-sfx {
+      background: rgba(6, 182, 212, 0.08);
+      border-left: 2px solid var(--accent-cyan);
+      color: #A5F3FC;
+    }
+
+    .track-overlay {
+      background: rgba(245, 158, 11, 0.08);
+      border-left: 2px solid var(--accent-amber);
+      color: #FDE68A;
+    }
+
+    .track-tag-header {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .track-lipsync .track-tag-header { color: #34D399; }
+    .track-vo .track-tag-header { color: #818CF8; }
+    .track-sfx .track-tag-header { color: #22D3EE; }
+    .track-overlay .track-tag-header { color: #FBBF24; }
+
+    .cut-note-row {
+      margin-top: auto;
+      background: #08090E;
+      border: 1px dashed var(--border);
+      padding: 6px 10px;
       border-radius: 4px;
-      font-size: 12px;
-      color: #FCD34D;
+      font-size: 11.5px;
+      color: var(--text-secondary);
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    /* Right Column: AI Video Prompt */
-    .col-video-prompt {
-      padding: 20px 24px;
+    /* Right Internal Column: AI Video Prompt */
+    .internal-col-prompt {
+      padding: 18px 20px;
+      background: #131620;
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      background: #141722;
+      gap: 12px;
     }
 
-    .engine-ribbon {
+    .prompt-topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -555,81 +718,163 @@
       gap: 8px;
     }
 
-    .engine-tags {
+    /* Smart Linked Asset Pills with Hover Tooltips */
+    .smart-asset-pills {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-family: var(--font-mono);
-      font-size: 10px;
-      color: var(--text-dim);
-    }
-
-    .engine-badge {
-      background: #1E2333;
-      padding: 2px 6px;
-      border-radius: 3px;
-      color: #94A3B8;
-    }
-
-    .ref-pills-row {
-      display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      align-items: center;
     }
 
-    .prompt-box {
-      background: #0B0D13;
+    .smart-pill {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #1A1F2C;
+      border: 1px solid #2B3347;
+      color: #93C5FD;
+      position: relative;
+      cursor: help;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .smart-pill:hover .pill-tooltip {
+      visibility: visible;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .pill-tooltip {
+      visibility: hidden;
+      opacity: 0;
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0;
+      background: #0F1117;
+      border: 1px solid var(--border-focus);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: var(--font-sans);
+      font-size: 11.5px;
+      line-height: 1.4;
+      white-space: normal;
+      width: 240px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      z-index: 50;
+      pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      transform: translateY(4px);
+    }
+
+    /* Per-Card Mode Mini Toggle */
+    .mini-mode-toggle {
+      display: inline-flex;
+      background: #0A0C11;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px;
+    }
+
+    .mini-mode-btn {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      padding: 2px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .mini-mode-btn.active {
+      background: var(--surface-highlight);
+      color: #FFFFFF;
+    }
+
+    /* Monospace Prompt Box */
+    .prompt-code-block {
+      background: #090B0F;
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 14px;
+      padding: 12px 14px;
       font-family: var(--font-mono);
-      font-size: 12.5px;
-      color: #E2E8F0;
+      font-size: 12px;
+      color: #F1F5F9;
       line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
-      min-height: 100px;
+      min-height: 120px;
+      flex: 1;
     }
 
-    .prompt-actions {
-      display: flex;
+    /* Emerald Primary Action Button */
+    .btn-emerald-copy {
+      background: #059669;
+      color: #FFFFFF;
+      border: none;
+      border-radius: 5px;
+      padding: 8px 14px;
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
       align-items: center;
-      justify-content: flex-end;
-      gap: 10px;
+      justify-content: center;
+      gap: 6px;
+      transition: background 0.15s ease, transform 0.1s ease;
+      align-self: flex-end;
+    }
+
+    .btn-emerald-copy:hover {
+      background: #10B981;
+    }
+
+    .btn-emerald-copy:active {
+      transform: scale(0.98);
+    }
+
+    .btn-emerald-copy.copied {
+      background: #047857;
     }
 
     /* Empty state */
-    .empty-state {
-      background: var(--card-bg);
+    .empty-state-card {
+      background: var(--surface-elevated);
       border: 1px dashed var(--border);
       border-radius: 8px;
-      padding: 48px;
+      padding: 40px;
       text-align: center;
-      color: var(--text-dim);
-      font-size: 14px;
+      color: var(--text-muted);
+      font-size: 13.5px;
     }
 
-    /* Toast Notification */
-    .toast {
+    /* Toast */
+    .toast-msg {
       position: fixed;
       bottom: 24px;
       right: 24px;
       background: #10B981;
-      color: #090A0F;
-      padding: 10px 18px;
+      color: #090A0D;
+      padding: 8px 16px;
       border-radius: 6px;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 700;
       box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
       opacity: 0;
       transform: translateY(10px);
       transition: all 0.2s ease;
       pointer-events: none;
-      z-index: 1000;
+      z-index: 200;
     }
 
-    .toast.show {
+    .toast-msg.show {
       opacity: 1;
       transform: translateY(0);
     }
@@ -637,560 +882,813 @@
 </head>
 <body>
 
-  <!-- Top Sticky Header -->
+  <!-- Top Fixed Header Bar (56px) -->
   <header>
-    <div class="brand-area">
-      <div class="logo-badge">AD</div>
-      <span class="brand-title">AD DIRECTOR STUDIO</span>
-      <span class="pill pill-session" id="header-session-id">NO SESSION</span>
-      <span class="pill pill-preset" id="header-preset">INDIAN-D2C-STORY</span>
-      <span class="pill pill-stage" id="header-stage">INITIALIZING</span>
-      <span class="pill pill-pruned" id="header-pruned">✂ 0 PRUNED</span>
+    <div class="brand-section">
+      <div class="logo-mark">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2"/>
+          <path d="m9 8 7 4-7 4Z"/>
+        </svg>
+      </div>
+      <span class="app-title">Ad Director Studio</span>
+      <span class="pill-badge" id="brand-badge">WAITING FOR BRIEF</span>
+      <span class="pill-badge pill-preset" id="preset-badge">INDIAN-D2C-STORY</span>
     </div>
-    <div class="header-actions">
-      <button class="btn btn-secondary" id="btn-refresh">↻ Refresh</button>
+
+    <div class="header-controls">
+      <!-- Global Prompt Mode Switcher -->
+      <div class="segmented-control">
+        <button class="segment-btn active" id="global-mode-ref" onclick="setGlobalPromptMode('ref')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" x2="12" y1="2" y2="15"/>
+          </svg>
+          Reference Tag Mode
+        </button>
+        <button class="segment-btn" id="global-mode-standalone" onclick="setGlobalPromptMode('standalone')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Standalone Full-Text
+        </button>
+      </div>
+
+      <!-- Export Screenplay (.md) -->
+      <button class="btn-ghost" id="btn-export-md" onclick="exportScreenplayMarkdown()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" x2="12" y1="15" y2="3"/>
+        </svg>
+        Export Screenplay (.md)
+      </button>
+
+      <button class="btn-ghost" onclick="fetchStudioData(true)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+          <path d="M8 16H3v5"/>
+        </svg>
+      </button>
     </div>
   </header>
 
-  <!-- Main 3-Zone Production Canvas -->
-  <main>
+  <!-- 2-Pane Split Director's Workbench Grid -->
+  <div class="workbench-grid">
 
-    <!-- ZONE 1: THE APPROVED MASTER NARRATIVE ARC -->
-    <section class="zone-section">
-      <div class="zone-header">
-        <h2 class="zone-title">
-          <span class="zone-badge">ZONE 1</span>
-          The Approved Master Narrative Arc
-        </h2>
-        <span class="zone-desc">Locked story beat progression with physical exit-frame continuity bridges</span>
+    <!-- LEFT STICKY PANE (30% Width) -->
+    <aside class="left-pane">
+      <div class="pane-section-header">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 20h9"/>
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        </svg>
+        Narrative Arc & Storyboard Script
       </div>
 
-      <!-- Brand Brief Ribbon -->
-      <div class="brief-card" id="brief-container">
-        <div class="brief-grid">
-          <div class="brief-item">
-            <span class="brief-label">Brand / Company</span>
-            <span class="brief-value" id="brief-brand">—</span>
-          </div>
-          <div class="brief-item">
-            <span class="brief-label">Hero Product</span>
-            <span class="brief-value" id="brief-product">—</span>
-          </div>
-          <div class="brief-item">
-            <span class="brief-label">Campaign Goal</span>
-            <span class="brief-value" id="brief-goal">—</span>
-          </div>
-          <div class="brief-item">
-            <span class="brief-label">Dialogue Language Rule</span>
-            <span class="brief-value" id="brief-lang" style="color: #34D399;">—</span>
-          </div>
+      <!-- Core Campaign Card -->
+      <div class="campaign-card" id="campaign-card">
+        <div class="campaign-brand-row">
+          <span class="campaign-brand-title" id="campaign-brand-title">—</span>
+          <span class="pill-badge" id="campaign-status-pill">IN PROGRESS</span>
+        </div>
+        <div class="campaign-product" id="campaign-product-text">Awaiting project brief...</div>
+        <div class="campaign-premise-box" id="campaign-premise-container">
+          <span class="premise-tag">Locked Core Premise</span>
+          <span id="campaign-premise-text">Core theme is being formulated in chat...</span>
         </div>
       </div>
 
-      <!-- Narrative Flow Progression -->
-      <div class="narrative-flow" id="narrative-flow-container">
-        <div class="empty-state">No locked story nodes yet. Initialize brief and branch scenes in Claude.</div>
-      </div>
-    </section>
-
-    <!-- ZONE 2: MASTER CONTINUITY ASSET BIBLE -->
-    <section class="zone-section">
-      <div class="zone-header">
-        <h2 class="zone-title">
-          <span class="zone-badge">ZONE 2</span>
-          Master Continuity Asset Bible
-        </h2>
-        <span class="zone-desc">Lock Midjourney / Flux reference PNGs first to anchor faces & environments</span>
+      <!-- Vertical Connected Act Timeline -->
+      <div class="pane-section-header" style="margin-top: 4px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        Act-by-Act Progression
       </div>
 
-      <div class="asset-instruction-banner">
-        <span>📸</span>
-        <span><strong>Pre-Production Requirement:</strong> Generate and lock your Character (@CHAR_01..N), Environment (@BG_01..N), and Product (@PROD_01) reference images in Midjourney or Flux BEFORE generating video clips.</span>
-      </div>
-
-      <div class="asset-grid" id="asset-bible-container">
-        <!-- Characters -->
-        <div class="asset-column">
-          <div class="asset-col-header">
-            <span>👤 Characters</span>
-          </div>
-          <div id="col-chars" style="display: flex; flex-direction: column; gap: 12px;">
-            <div class="empty-state">Waiting for lock_assets</div>
-          </div>
-        </div>
-
-        <!-- Environments -->
-        <div class="asset-column">
-          <div class="asset-col-header">
-            <span>🏛️ Environments</span>
-          </div>
-          <div id="col-envs" style="display: flex; flex-direction: column; gap: 12px;">
-            <div class="empty-state">Waiting for lock_assets</div>
-          </div>
-        </div>
-
-        <!-- Hero Product -->
-        <div class="asset-column">
-          <div class="asset-col-header">
-            <span>📦 Hero Product</span>
-          </div>
-          <div id="col-prod" style="display: flex; flex-direction: column; gap: 12px;">
-            <div class="empty-state">Waiting for lock_assets</div>
-          </div>
+      <div class="act-timeline" id="act-timeline-container">
+        <div class="empty-state-card" style="padding: 24px;">
+          Awaiting scene branching in Claude...
         </div>
       </div>
-    </section>
+    </aside>
 
-    <!-- ZONE 3: TWO-COLUMN SCREENPLAY & KINETIC VIDEO PROMPT MATRIX -->
-    <section class="zone-section">
-      <div class="zone-header">
-        <h2 class="zone-title">
-          <span class="zone-badge">ZONE 3</span>
-          Two-Column Screenplay & Kinetic Video Prompt Matrix
-        </h2>
-        <span class="zone-desc">Left: Director blocking for video editor · Right: Reference-tagged AI kinetic video prompts</span>
-      </div>
+    <!-- RIGHT SCROLLABLE WORKSPACE (70% Width) -->
+    <main class="right-pane">
 
-      <div class="timeline-container" id="timeline-container">
-        <div class="empty-state">Timeline will appear once shots are compiled with compile_shots.</div>
-      </div>
-    </section>
+      <!-- SECTION 1: Production Asset Bible -->
+      <section>
+        <div class="section-header">
+          <h2 class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/>
+              <path d="M6 6h10"/>
+              <path d="M6 10h10"/>
+            </svg>
+            Production Asset Bible (Reference PNGs)
+          </h2>
+        </div>
 
-  </main>
+        <div class="asset-bible-grid" id="asset-bible-grid" style="margin-top: 14px;">
+          <!-- Cast & Characters Column -->
+          <div class="asset-column">
+            <div class="asset-col-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              Cast & Characters
+            </div>
+            <div id="col-characters" style="display: flex; flex-direction: column; gap: 10px;">
+              <div class="empty-state-card">Awaiting lock_assets...</div>
+            </div>
+          </div>
 
-  <!-- Copy Toast Notification -->
-  <div class="toast" id="toast">Copied to clipboard!</div>
+          <!-- Locations & Sets Column -->
+          <div class="asset-column">
+            <div class="asset-col-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="16" height="20" x="4" y="2" rx="2" ry="2"/>
+                <path d="M9 22v-4h6v4"/>
+                <path d="M8 6h.01"/>
+                <path d="M16 6h.01"/>
+                <path d="M12 6h.01"/>
+                <path d="M12 10h.01"/>
+                <path d="M12 14h.01"/>
+                <path d="M16 10h.01"/>
+                <path d="M16 14h.01"/>
+                <path d="M8 10h.01"/>
+                <path d="M8 14h.01"/>
+              </svg>
+              Locations & Sets
+            </div>
+            <div id="col-environments" style="display: flex; flex-direction: column; gap: 10px;">
+              <div class="empty-state-card">Awaiting lock_assets...</div>
+            </div>
+          </div>
+
+          <!-- Hero Product Column -->
+          <div class="asset-column">
+            <div class="asset-col-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m7.5 4.27 9 5.15"/>
+                <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                <path d="m3.3 7 8.7 5 8.7-5"/>
+                <path d="M12 22V12"/>
+              </svg>
+              Hero Product
+            </div>
+            <div id="col-product" style="display: flex; flex-direction: column; gap: 10px;">
+              <div class="empty-state-card">Awaiting lock_assets...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 2: Scene-by-Scene Production Matrix -->
+      <section>
+        <div class="section-header">
+          <h2 class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2"/>
+              <path d="M3 9h18"/>
+              <path d="M3 15h18"/>
+              <path d="M9 3v18"/>
+              <path d="M15 3v18"/>
+            </svg>
+            Scene-by-Scene Production Matrix
+          </h2>
+        </div>
+
+        <div class="scenes-stack" id="scenes-matrix-container" style="margin-top: 18px;">
+          <div class="empty-state-card">
+            Shots will appear here as Claude calls <code>compile_single_scene</code> sequentially for each scene.
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Notification Toast -->
+  <div class="toast-msg" id="toast-msg">Copied to clipboard!</div>
 
   <script>
-    // Safe Entity Decoding Helper to prevent double escaping
+    let globalActivePromptMode = 'ref'; // 'ref' | 'standalone'
+    let currentSessionData = null;
+    let cardPromptModes = {}; // sceneNumber -> 'ref' | 'standalone'
+
+    // Entity Decoder Helper: cleans any legacy escaping
     function decodeEntities(str) {
       if (!str || typeof str !== 'string') return '';
       const doc = new DOMParser().parseFromString(str, 'text/html');
       return doc.documentElement.textContent || str;
     }
 
-    // Safe Clipboard Copy Helper using raw unescaped UTF-8
-    function copyRawText(text, btnElement) {
-      const clean = decodeEntities(text);
+    // Safe Raw Clipboard Copy
+    function copyText(rawText, btnElement) {
+      const clean = decodeEntities(rawText);
       navigator.clipboard.writeText(clean).then(() => {
-        showToast("Copied to clipboard!");
+        showToast('Copied to clipboard!');
         if (btnElement) {
-          const original = btnElement.textContent;
-          btnElement.textContent = "✓ Copied!";
+          const original = btnElement.innerHTML;
+          btnElement.classList.add('copied');
+          btnElement.innerHTML = `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Copied!
+          `;
           setTimeout(() => {
-            btnElement.textContent = original;
+            btnElement.classList.remove('copied');
+            btnElement.innerHTML = original;
           }, 1500);
         }
       }).catch(err => {
-        console.error("Clipboard copy failed:", err);
+        console.error('Copy failed:', err);
       });
     }
 
     function showToast(msg) {
-      const toast = document.getElementById("toast");
-      toast.textContent = msg;
-      toast.classList.add("show");
+      const t = document.getElementById('toast-msg');
+      t.textContent = msg;
+      t.classList.add('show');
       setTimeout(() => {
-        toast.classList.remove("show");
+        t.classList.remove('show');
       }, 2000);
     }
 
-    async function loadStudioData() {
+    function setGlobalPromptMode(mode) {
+      globalActivePromptMode = mode;
+      document.getElementById('global-mode-ref').classList.toggle('active', mode === 'ref');
+      document.getElementById('global-mode-standalone').classList.toggle('active', mode === 'standalone');
+
+      if (currentSessionData) {
+        const shots = currentSessionData.compiledShots || [];
+        shots.forEach(s => {
+          cardPromptModes[s.sceneNumber] = mode;
+        });
+        renderScenesMatrix(currentSessionData);
+      }
+    }
+
+    function setCardPromptMode(sceneNum, mode) {
+      cardPromptModes[sceneNum] = mode;
+      renderScenesMatrix(currentSessionData);
+    }
+
+    function scrollToSceneCard(sceneNum) {
+      const el = document.getElementById('scene-card-' + sceneNum);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('highlight-pulse');
+        setTimeout(() => {
+          el.classList.remove('highlight-pulse');
+        }, 1600);
+      }
+    }
+
+    async function fetchStudioData(isManual = false) {
       try {
-        const res = await fetch("/api/graph");
+        const res = await fetch('/api/graph');
         if (!res.ok) return;
         const data = await res.json();
+        currentSessionData = data;
         renderStudio(data);
+        if (isManual) showToast('Studio refreshed!');
       } catch (err) {
-        console.error("Error fetching studio data:", err);
+        console.error('Fetch error:', err);
       }
     }
 
     function renderStudio(data) {
-      if (!data || data.status === "NO_ACTIVE_SESSION") {
-        return;
-      }
+      if (!data || data.status === 'NO_ACTIVE_SESSION') return;
 
-      // Update Header
-      const sessionId = data.sessionId || data.projectId || "active-session";
-      document.getElementById("header-session-id").textContent = decodeEntities(sessionId);
-      document.getElementById("header-preset").textContent = decodeEntities(data.presetId || data.brief?.preset || "INDIAN-D2C-STORY");
-      document.getElementById("header-stage").textContent = decodeEntities(data.stage || data.currentStage || "IN_PROGRESS");
-      document.getElementById("header-pruned").textContent = `✂ ${data.prunedCount || 0} PRUNED`;
+      // Header pills
+      const brand = data.company || data.brand || data.brief?.company || 'BRAND';
+      document.getElementById('brand-badge').textContent = decodeEntities(brand);
+      document.getElementById('preset-badge').textContent = decodeEntities(data.presetId || data.brief?.preset || 'INDIAN-D2C-STORY');
 
-      // Render Zone 1: Brief
-      const brand = data.company || data.brand || data.brief?.company || "Unspecified Brand";
-      const product = data.product || data.brief?.product || "Hero Product";
-      const goal = data.goal || data.brief?.goal || "Campaign Awareness";
-      const langRule = data.preset?.dialogueLanguageRule || data.dialogueLanguageRule || (data.presetId === "indian-d2c-story" ? "Conversational Hinglish dialogue; English camera directions" : "100% English only");
+      // Left Pane: Core Campaign Card
+      document.getElementById('campaign-brand-title').textContent = decodeEntities(brand);
+      document.getElementById('campaign-product-text').textContent = decodeEntities(data.product || data.brief?.product || '');
+      document.getElementById('campaign-status-pill').textContent = decodeEntities(data.stage || 'IN_PROGRESS');
 
-      document.getElementById("brief-brand").textContent = decodeEntities(brand);
-      document.getElementById("brief-product").textContent = decodeEntities(product);
-      document.getElementById("brief-goal").textContent = decodeEntities(goal);
-      document.getElementById("brief-lang").textContent = decodeEntities(langRule);
+      const premise = data.coreTheme?.themePremise || data.coreTheme?.themeTitle || (data.lockedNodes?.[0]?.chosenNarrativeSummary) || 'Core premise in progress...';
+      document.getElementById('campaign-premise-text').textContent = decodeEntities(premise);
 
-      // Render Zone 1: Narrative Flow
-      const lockedNodes = data.lockedNodes || [];
-      const narrativeContainer = document.getElementById("narrative-flow-container");
+      // Left Pane: Act Timeline
+      renderActTimeline(data);
 
-      if (lockedNodes.length > 0) {
-        narrativeContainer.innerHTML = "";
-        lockedNodes.forEach((node, idx) => {
-          const card = document.createElement("div");
-          card.className = "beat-card";
-
-          const header = document.createElement("div");
-          header.className = "beat-header";
-
-          const num = document.createElement("span");
-          num.className = "beat-number";
-          num.textContent = `BEAT ${node.sceneNumber || node.step || (idx + 1)}: ${node.stage || "SCENE"}`;
-
-          const opt = document.createElement("span");
-          opt.className = "beat-option-tag";
-          opt.textContent = `Option ${node.chosenOptionId || node.selectedOptionId || "1"} Chosen`;
-
-          header.appendChild(num);
-          header.appendChild(opt);
-          card.appendChild(header);
-
-          const summary = document.createElement("p");
-          summary.className = "beat-summary";
-          summary.textContent = decodeEntities(node.chosenNarrativeSummary || node.treatmentProse || node.description || node.title || "");
-          card.appendChild(summary);
-
-          const exitAnchor = node.exitFrameAnchor || (idx < lockedNodes.length - 1 ? "Scene closes on decisive emotional reaction frame." : undefined);
-          if (exitAnchor) {
-            const bridge = document.createElement("div");
-            bridge.className = "beat-bridge";
-
-            const bridgeLabel = document.createElement("span");
-            bridgeLabel.className = "beat-bridge-label";
-            bridgeLabel.textContent = "🔗 Physical Exit-Frame Anchor";
-
-            const bridgeText = document.createElement("span");
-            bridgeText.textContent = decodeEntities(exitAnchor);
-
-            bridge.appendChild(bridgeLabel);
-            bridge.appendChild(bridgeText);
-            card.appendChild(bridge);
-          }
-
-          narrativeContainer.appendChild(card);
-        });
-      }
-
-      // Render Zone 2: Master Continuity Asset Bible
+      // Right Pane: Asset Bible
       renderAssetBible(data);
 
-      // Render Zone 3: Two-Column Screenplay & Video Prompt Matrix
-      renderTimelineMatrix(data);
+      // Right Pane: Scenes Matrix
+      renderScenesMatrix(data);
+    }
+
+    function renderActTimeline(data) {
+      const container = document.getElementById('act-timeline-container');
+      const scenes = data.lockedNodes || data.scenes || [];
+
+      if (scenes.length === 0) return;
+
+      container.innerHTML = '';
+
+      scenes.forEach((sc, idx) => {
+        const sceneNum = sc.sceneNumber || idx + 1;
+        const node = document.createElement('div');
+        node.className = 'act-node completed';
+        node.onclick = () => scrollToSceneCard(sceneNum);
+
+        const indicator = document.createElement('div');
+        indicator.className = 'act-step-indicator';
+        indicator.textContent = String(sceneNum).padStart(2, '0');
+
+        const content = document.createElement('div');
+        content.className = 'act-node-content';
+
+        const header = document.createElement('div');
+        header.className = 'act-node-header';
+
+        const title = document.createElement('span');
+        title.className = 'act-node-title';
+        title.textContent = sc.actTitle || `Act ${sceneNum} — Scene ${sceneNum}`;
+
+        const dur = document.createElement('span');
+        dur.className = 'act-duration-badge';
+        dur.textContent = '5s';
+
+        header.appendChild(title);
+        header.appendChild(dur);
+        content.appendChild(header);
+
+        const summary = document.createElement('p');
+        summary.className = 'act-node-summary';
+        summary.textContent = decodeEntities(sc.chosenNarrativeSummary || sc.treatmentProse || '');
+        content.appendChild(summary);
+
+        node.appendChild(indicator);
+        node.appendChild(content);
+        container.appendChild(node);
+      });
     }
 
     function renderAssetBible(data) {
-      const colChars = document.getElementById("col-chars");
-      const colEnvs = document.getElementById("col-envs");
-      const colProd = document.getElementById("col-prod");
+      const colChars = document.getElementById('col-characters');
+      const colEnvs = document.getElementById('col-environments');
+      const colProd = document.getElementById('col-product');
 
-      let chars = [];
-      let envs = [];
-      let prod = null;
+      const registry = data.assets || data.assetRegistry;
+      if (!registry) return;
 
-      if (data.assets) {
-        chars = data.assets.characters || [];
-        envs = data.assets.environments || [];
-        prod = data.assets.product;
-      } else if (data.assetRegistry) {
-        if (data.assetRegistry.characters) {
-          chars = Array.isArray(data.assetRegistry.characters) 
-            ? data.assetRegistry.characters 
-            : Object.values(data.assetRegistry.characters);
-        }
-        if (data.assetRegistry.environments) {
-          envs = Array.isArray(data.assetRegistry.environments)
-            ? data.assetRegistry.environments
-            : Object.values(data.assetRegistry.environments);
-        }
-        prod = data.assetRegistry.product;
-      }
+      const chars = registry.characters || [];
+      const envs = registry.environments || [];
+      const prod = registry.product;
 
-      // Render Characters
       if (chars.length > 0) {
-        colChars.innerHTML = "";
+        colChars.innerHTML = '';
         chars.forEach(c => {
-          const card = document.createElement("div");
-          card.className = "asset-card";
+          const card = document.createElement('div');
+          card.className = 'asset-card';
 
-          const top = document.createElement("div");
-          top.className = "asset-card-top";
+          const hdr = document.createElement('div');
+          hdr.className = 'asset-card-header';
 
-          const tag = document.createElement("span");
-          tag.className = "asset-tag asset-tag-char";
-          tag.textContent = decodeEntities(c.id || c.assetId || "@CHAR_01");
+          const badge = document.createElement('span');
+          badge.className = 'asset-id-badge asset-id-char';
+          badge.textContent = `${c.id} · ${c.name}`;
 
-          const role = document.createElement("span");
-          role.className = "brief-label";
-          role.textContent = decodeEntities(c.role || "Lead");
+          const role = document.createElement('span');
+          role.className = 'asset-role-tag';
+          role.textContent = decodeEntities(c.role || 'LEAD');
 
-          top.appendChild(tag);
-          top.appendChild(role);
-          card.appendChild(top);
+          hdr.appendChild(badge);
+          hdr.appendChild(role);
+          card.appendChild(hdr);
 
-          const name = document.createElement("div");
-          name.className = "asset-name";
-          name.textContent = decodeEntities(c.name || "Character");
-          card.appendChild(name);
+          const desc = document.createElement('p');
+          desc.className = 'asset-desc';
+          desc.textContent = decodeEntities(c.appearancePrompt || '');
+          card.appendChild(desc);
 
-          const detail = document.createElement("p");
-          detail.className = "asset-detail";
-          detail.textContent = decodeEntities(c.appearancePrompt || c.prompt || "");
-          card.appendChild(detail);
-
-          const copyBtn = document.createElement("button");
-          copyBtn.className = "btn btn-copy";
-          copyBtn.textContent = "Copy Midjourney / Flux Prompt";
-          const promptToCopy = c.referencePrompt || `Character concept portrait of ${c.name}, ${c.appearancePrompt}, photorealistic 35mm film photography, 8k resolution, authentic skin texture --ar 16:9 --style raw`;
-          copyBtn.onclick = () => copyRawText(promptToCopy, copyBtn);
-          card.appendChild(copyBtn);
+          const btn = document.createElement('button');
+          btn.className = 'btn-asset-copy';
+          btn.innerHTML = `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+            </svg>
+            Copy Reference Prompt
+          `;
+          const pToCopy = c.referencePrompt || `Character concept portrait of ${c.name}, ${c.appearancePrompt}, photorealistic 35mm film photography --ar 16:9 --style raw`;
+          btn.onclick = () => copyText(pToCopy, btn);
+          card.appendChild(btn);
 
           colChars.appendChild(card);
         });
       }
 
-      // Render Environments
       if (envs.length > 0) {
-        colEnvs.innerHTML = "";
+        colEnvs.innerHTML = '';
         envs.forEach(e => {
-          const card = document.createElement("div");
-          card.className = "asset-card";
+          const card = document.createElement('div');
+          card.className = 'asset-card';
 
-          const top = document.createElement("div");
-          top.className = "asset-card-top";
+          const hdr = document.createElement('div');
+          hdr.className = 'asset-card-header';
 
-          const tag = document.createElement("span");
-          tag.className = "asset-tag asset-tag-bg";
-          tag.textContent = decodeEntities(e.id || e.assetId || "@BG_01");
+          const badge = document.createElement('span');
+          badge.className = 'asset-id-badge asset-id-bg';
+          badge.textContent = `${e.id} · ${e.name}`;
 
-          top.appendChild(tag);
-          card.appendChild(top);
+          hdr.appendChild(badge);
+          card.appendChild(hdr);
 
-          const name = document.createElement("div");
-          name.className = "asset-name";
-          name.textContent = decodeEntities(e.name || "Environment");
-          card.appendChild(name);
+          const desc = document.createElement('p');
+          desc.className = 'asset-desc';
+          desc.textContent = decodeEntities(e.environmentPrompt || '');
+          card.appendChild(desc);
 
-          const detail = document.createElement("p");
-          detail.className = "asset-detail";
-          detail.textContent = decodeEntities(e.environmentPrompt || e.prompt || "");
-          card.appendChild(detail);
-
-          const copyBtn = document.createElement("button");
-          copyBtn.className = "btn btn-copy";
-          copyBtn.textContent = "Copy Midjourney / Flux Prompt";
-          const promptToCopy = e.referencePrompt || `Cinematic environment landscape of ${e.name}, ${e.environmentPrompt}, lighting: ${e.lightingProfile || 'Atmospheric'}, architectural wide shot, photorealistic 24mm --ar 16:9 --style raw`;
-          copyBtn.onclick = () => copyRawText(promptToCopy, copyBtn);
-          card.appendChild(copyBtn);
+          const btn = document.createElement('button');
+          btn.className = 'btn-asset-copy';
+          btn.innerHTML = `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+            </svg>
+            Copy Reference Prompt
+          `;
+          const pToCopy = e.referencePrompt || `Cinematic environment landscape of ${e.name}, ${e.environmentPrompt}, lighting: ${e.lightingProfile} --ar 16:9 --style raw`;
+          btn.onclick = () => copyText(pToCopy, btn);
+          card.appendChild(btn);
 
           colEnvs.appendChild(card);
         });
       }
 
-      // Render Hero Product
       if (prod) {
-        colProd.innerHTML = "";
-        const card = document.createElement("div");
-        card.className = "asset-card";
+        colProd.innerHTML = '';
+        const card = document.createElement('div');
+        card.className = 'asset-card';
 
-        const top = document.createElement("div");
-        top.className = "asset-card-top";
+        const hdr = document.createElement('div');
+        hdr.className = 'asset-card-header';
 
-        const tag = document.createElement("span");
-        tag.className = "asset-tag asset-tag-prod";
-        tag.textContent = decodeEntities(prod.id || prod.assetId || "@PROD_01");
+        const badge = document.createElement('span');
+        badge.className = 'asset-id-badge asset-id-prod';
+        badge.textContent = `PROD_01 · ${prod.name}`;
 
-        top.appendChild(tag);
-        card.appendChild(top);
+        hdr.appendChild(badge);
+        card.appendChild(hdr);
 
-        const name = document.createElement("div");
-        name.className = "asset-name";
-        name.textContent = decodeEntities(prod.name || "Hero Product");
-        card.appendChild(name);
+        const desc = document.createElement('p');
+        desc.className = 'asset-desc';
+        desc.textContent = decodeEntities(prod.packagingAppearance || prod.productPrompt || '');
+        card.appendChild(desc);
 
-        const detail = document.createElement("p");
-        detail.className = "asset-detail";
-        detail.textContent = decodeEntities(prod.packagingAppearance || prod.productPrompt || "");
-        card.appendChild(detail);
-
-        const copyBtn = document.createElement("button");
-        copyBtn.className = "btn btn-copy";
-        copyBtn.textContent = "Copy Midjourney / Flux Prompt";
-        const promptToCopy = prod.referencePrompt || `High-end commercial hero studio photography of ${prod.name}, ${prod.packagingAppearance || prod.productPrompt}, 85mm macro lens, Hasselblad quality --ar 16:9 --style raw`;
-        copyBtn.onclick = () => copyRawText(promptToCopy, copyBtn);
-        card.appendChild(copyBtn);
+        const btn = document.createElement('button');
+        btn.className = 'btn-asset-copy';
+        btn.innerHTML = `
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+          </svg>
+          Copy Reference Prompt
+        `;
+        const pToCopy = prod.referencePrompt || `High-end commercial hero product shot of ${prod.name}, ${prod.packagingAppearance || prod.productPrompt} --ar 16:9 --style raw`;
+        btn.onclick = () => copyText(pToCopy, btn);
+        card.appendChild(btn);
 
         colProd.appendChild(card);
       }
     }
 
-    function renderTimelineMatrix(data) {
-      const container = document.getElementById("timeline-container");
+    function renderScenesMatrix(data) {
+      const container = document.getElementById('scenes-matrix-container');
       const shots = data.compiledShots || data.shots || [];
 
-      if (shots.length === 0) {
-        return;
-      }
+      if (shots.length === 0) return;
 
-      container.innerHTML = "";
+      container.innerHTML = '';
 
       shots.forEach((shot, idx) => {
-        const sceneNum = shot.sceneNumber || shot.order || (idx + 1);
-        const duration = shot.durationSeconds || shot.duration || 5;
+        const sceneNum = shot.sceneNumber || shot.order || idx + 1;
+        const currentMode = cardPromptModes[sceneNum] || globalActivePromptMode;
 
-        const card = document.createElement("div");
-        card.className = "scene-split-card";
+        const card = document.createElement('div');
+        card.className = 'scene-workbench-card';
+        card.id = 'scene-card-' + sceneNum;
 
-        // LEFT COLUMN: Screenplay & Cut Guide
-        const colScreenplay = document.createElement("div");
-        colScreenplay.className = "col-screenplay";
+        // Header Bar
+        const topbar = document.createElement('div');
+        topbar.className = 'scene-card-topbar';
 
-        const spHeader = document.createElement("div");
-        spHeader.className = "screenplay-header";
+        const ident = document.createElement('div');
+        ident.className = 'scene-ident';
 
-        const spTitle = document.createElement("span");
-        spTitle.className = "scene-title-badge";
-        spTitle.textContent = `SCENE ${sceneNum}: ${decodeEntities(shot.storyBeatSummary || shot.title || 'Scene Action')}`;
+        const badgeNum = document.createElement('span');
+        badgeNum.className = 'scene-badge-num';
+        badgeNum.textContent = `SCENE ${String(sceneNum).padStart(2, '0')}`;
 
-        const spDuration = document.createElement("span");
-        spDuration.className = "duration-pill";
-        spDuration.textContent = `⏱ ${duration}s`;
+        const title = document.createElement('span');
+        title.className = 'scene-narrative-title';
+        title.textContent = decodeEntities(shot.narrativeTitle || shot.storyBeatSummary || `Scene ${sceneNum}`);
 
-        spHeader.appendChild(spTitle);
-        spHeader.appendChild(spDuration);
-        colScreenplay.appendChild(spHeader);
+        ident.appendChild(badgeNum);
+        ident.appendChild(title);
+        topbar.appendChild(ident);
 
-        // Entry Bridge
-        if (shot.entryFrameBridge) {
-          const bridgeBox = document.createElement("div");
-          bridgeBox.className = "screenplay-bridge-box";
-          bridgeBox.textContent = `🔗 ${decodeEntities(shot.entryFrameBridge)}`;
-          colScreenplay.appendChild(bridgeBox);
-        }
+        const meta = document.createElement('div');
+        meta.className = 'scene-camera-meta';
 
-        // Screenplay Action
-        const actionText = document.createElement("p");
-        actionText.className = "screenplay-action-text";
-        actionText.textContent = decodeEntities(shot.screenplayAction || shot.action || "");
-        colScreenplay.appendChild(actionText);
+        const durPill = document.createElement('span');
+        durPill.className = 'meta-pill';
+        durPill.textContent = `⏱ ${shot.durationSeconds || shot.duration || 5}s`;
+        meta.appendChild(durPill);
 
-        // Dialogue Box
-        const dialogue = shot.spokenDialogue || shot.dialogue;
-        if (dialogue && dialogue !== "NONE (SFX only)") {
-          const dBox = document.createElement("div");
-          dBox.className = "dialogue-box";
-
-          const dSpeaker = document.createElement("span");
-          dSpeaker.className = "dialogue-speaker";
-          dSpeaker.textContent = "Spoken Dialogue (Lip-Sync)";
-
-          const dText = document.createElement("span");
-          dText.className = "dialogue-text";
-          dText.textContent = `"${decodeEntities(dialogue)}"`;
-
-          dBox.appendChild(dSpeaker);
-          dBox.appendChild(dText);
-          colScreenplay.appendChild(dBox);
-        }
-
-        // Premiere / DaVinci Cut Note
-        const cutNote = shot.editorCutNote || "Match-cut on physical movement; hold room tone";
-        const cutBox = document.createElement("div");
-        cutBox.className = "cut-note-box";
-        cutBox.innerHTML = `<span>✂️</span> <span><strong>Editor Cut Note:</strong> ${decodeEntities(cutNote)}</span>`;
-        colScreenplay.appendChild(cutBox);
-
-        card.appendChild(colScreenplay);
-
-        // RIGHT COLUMN: Reference-Tagged Video Prompt
-        const colVideo = document.createElement("div");
-        colVideo.className = "col-video-prompt";
-
-        // Engine tags ribbon
-        const ribbon = document.createElement("div");
-        ribbon.className = "engine-ribbon";
-
-        const engineTags = document.createElement("div");
-        engineTags.className = "engine-tags";
-        engineTags.innerHTML = `
-          <span>Target Models:</span>
-          <span class="engine-badge">Kling 3.0 Omni</span>
-          <span class="engine-badge">Veo 3.1</span>
-          <span class="engine-badge">Runway Gen-4.5</span>
-          <span class="engine-badge">Seedance</span>
-        `;
-
-        ribbon.appendChild(engineTags);
-        colVideo.appendChild(ribbon);
-
-        // Reference pills and camera badges
-        const refRow = document.createElement("div");
-        refRow.className = "ref-pills-row";
-
-        const refs = shot.attachedAssetRefs || (shot.characterId ? [`@${shot.characterId}`, `@${shot.backgroundId || 'BG_01'}`] : []);
-        refs.forEach(r => {
-          const pill = document.createElement("span");
-          pill.className = "pill pill-session";
-          pill.style.borderColor = "#38BDF8";
-          pill.style.color = "#38BDF8";
-          pill.textContent = decodeEntities(r);
-          refRow.appendChild(pill);
-        });
-
-        // Camera spec pills
         const cam = shot.cameraSpec || {};
-        const lensText = cam.lensMm || shot.lens || "50mm";
-        const apertureText = cam.aperture || "f/1.8";
-        const angleText = cam.angle || shot.cameraAngle || "MEDIUM_SHOT";
-        const moveText = cam.movement || shot.cameraMovement || "STATIC";
+        const lensPill = document.createElement('span');
+        lensPill.className = 'meta-pill';
+        lensPill.textContent = `${cam.lensMm || shot.lens || '35mm'} ${cam.aperture || 'f/1.8'}`;
+        meta.appendChild(lensPill);
 
-        const camPill = document.createElement("span");
-        camPill.className = "pill pill-session";
-        camPill.textContent = `${lensText} ${apertureText} · ${angleText} · ${moveText}`;
-        refRow.appendChild(camPill);
+        const movePill = document.createElement('span');
+        movePill.className = 'meta-pill';
+        movePill.textContent = cam.singleContinuousMovement || cam.framingAndAngle || shot.cameraMovement || 'Slow Push-In';
+        meta.appendChild(movePill);
 
-        colVideo.appendChild(refRow);
+        topbar.appendChild(meta);
+        card.appendChild(topbar);
 
-        // Prompt Box
-        const promptBox = document.createElement("div");
-        promptBox.className = "prompt-box";
-        const videoPrompt = shot.aiVideoPrompt || shot.compiledVideoPrompt || "";
-        promptBox.textContent = decodeEntities(videoPrompt);
-        colVideo.appendChild(promptBox);
+        // Internal 2-Column Split
+        const split = document.createElement('div');
+        split.className = 'scene-internal-split';
 
-        // Prompt Action Button
-        const pActions = document.createElement("div");
-        pActions.className = "prompt-actions";
+        // LEFT INTERNAL COLUMN: Director & Editor Guide
+        const colGuide = document.createElement('div');
+        colGuide.className = 'internal-col-guide';
 
-        const copyPromptBtn = document.createElement("button");
-        copyPromptBtn.className = "btn btn-copy-emerald";
-        copyPromptBtn.innerHTML = `<span>📋</span> Copy Kinetic Video Prompt`;
-        copyPromptBtn.onclick = () => copyRawText(videoPrompt, copyPromptBtn);
+        const blockLabel = document.createElement('div');
+        blockLabel.className = 'guide-label';
+        blockLabel.innerHTML = `
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2"/>
+            <path d="M7 7h10"/>
+            <path d="M7 12h10"/>
+            <path d="M7 17h10"/>
+          </svg>
+          Visual Blocking (Director's Take)
+        `;
+        colGuide.appendChild(blockLabel);
 
-        pActions.appendChild(copyPromptBtn);
-        colVideo.appendChild(pActions);
+        const blockText = document.createElement('p');
+        blockText.className = 'visual-blocking-text';
+        blockText.textContent = decodeEntities(shot.visualBlocking || shot.screenplayAction || shot.action || '');
+        colGuide.appendChild(blockText);
 
-        card.appendChild(colVideo);
+        // Audio Breakdown Box
+        const audioBox = document.createElement('div');
+        audioBox.className = 'audio-breakdown-box';
+
+        const lipsync = shot.onCameraSpokenDialogue || shot.spokenDialogue || shot.dialogue;
+        if (lipsync && lipsync.toUpperCase() !== 'NONE') {
+          const item = document.createElement('div');
+          item.className = 'audio-track-item track-lipsync';
+          item.innerHTML = `
+            <span class="track-tag-header">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              On-Camera Lip-Sync
+            </span>
+            <span>"${decodeEntities(lipsync.replace(/^["']|["']$/g, ''))}"</span>
+          `;
+          audioBox.appendChild(item);
+        }
+
+        const vo = shot.postProductionVoiceover;
+        if (vo && vo.toUpperCase() !== 'NONE') {
+          const item = document.createElement('div');
+          item.className = 'audio-track-item track-vo';
+          item.innerHTML = `
+            <span class="track-tag-header">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+              Post-Production VO (Narrator)
+            </span>
+            <span>"${decodeEntities(vo.replace(/^["']|["']$/g, ''))}"</span>
+          `;
+          audioBox.appendChild(item);
+        }
+
+        const sfx = shot.sfxAndAmbience;
+        if (sfx && sfx.toUpperCase() !== 'NONE') {
+          const item = document.createElement('div');
+          item.className = 'audio-track-item track-sfx';
+          item.innerHTML = `
+            <span class="track-tag-header">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              Audio Ambience & SFX
+            </span>
+            <span>${decodeEntities(sfx)}</span>
+          `;
+          audioBox.appendChild(item);
+        }
+
+        const textOverlay = shot.onScreenTextOverlay;
+        if (textOverlay && textOverlay.toUpperCase() !== 'NONE') {
+          const item = document.createElement('div');
+          item.className = 'audio-track-item track-overlay';
+          item.innerHTML = `
+            <span class="track-tag-header">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></svg>
+              On-Screen Text Graphic
+            </span>
+            <span>${decodeEntities(textOverlay)}</span>
+          `;
+          audioBox.appendChild(item);
+        }
+
+        colGuide.appendChild(audioBox);
+
+        // Timeline Cut Note
+        const cutNote = shot.editorCutNote || 'Match cut on physical movement';
+        const cutBox = document.createElement('div');
+        cutBox.className = 'cut-note-row';
+        cutBox.innerHTML = `
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="6" r="3"/>
+            <circle cx="6" cy="18" r="3"/>
+            <line x1="20" x2="8.12" y1="4" y2="15.88"/>
+            <line x1="14.47" x2="20" y1="14.48" y2="20"/>
+            <line x1="8.12" x2="12" y1="8.12" y2="12"/>
+          </svg>
+          <span><strong>Timeline Cut:</strong> ${decodeEntities(cutNote)}</span>
+        `;
+        colGuide.appendChild(cutBox);
+
+        split.appendChild(colGuide);
+
+        // RIGHT INTERNAL COLUMN: AI Video Prompt
+        const colPrompt = document.createElement('div');
+        colPrompt.className = 'internal-col-prompt';
+
+        const pTop = document.createElement('div');
+        pTop.className = 'prompt-topbar';
+
+        // Smart Linked Asset Pills with tooltips
+        const pillsWrap = document.createElement('div');
+        pillsWrap.className = 'smart-asset-pills';
+
+        const resolvedAssets = shot.attachedAssetsResolved || [];
+        if (resolvedAssets.length > 0) {
+          resolvedAssets.forEach(a => {
+            const pill = document.createElement('span');
+            pill.className = 'smart-pill';
+            pill.textContent = a.label;
+
+            const tip = document.createElement('div');
+            tip.className = 'pill-tooltip';
+            tip.textContent = a.summary;
+            pill.appendChild(tip);
+
+            pillsWrap.appendChild(pill);
+          });
+        } else {
+          (shot.attachedAssetRefs || []).forEach(r => {
+            const pill = document.createElement('span');
+            pill.className = 'smart-pill';
+            pill.textContent = r;
+            pillsWrap.appendChild(pill);
+          });
+        }
+        pTop.appendChild(pillsWrap);
+
+        // Per-Card Mini Mode Toggle
+        const miniToggle = document.createElement('div');
+        miniToggle.className = 'mini-mode-toggle';
+
+        const btnRef = document.createElement('button');
+        btnRef.className = 'mini-mode-btn' + (currentMode === 'ref' ? ' active' : '');
+        btnRef.textContent = '@Ref Mode';
+        btnRef.onclick = () => setCardPromptMode(sceneNum, 'ref');
+
+        const btnStandalone = document.createElement('button');
+        btnStandalone.className = 'mini-mode-btn' + (currentMode === 'standalone' ? ' active' : '');
+        btnStandalone.textContent = 'Standalone';
+        btnStandalone.onclick = () => setCardPromptMode(sceneNum, 'standalone');
+
+        miniToggle.appendChild(btnRef);
+        miniToggle.appendChild(btnStandalone);
+        pTop.appendChild(miniToggle);
+
+        colPrompt.appendChild(pTop);
+
+        // Prompt Code Block
+        const promptText =
+          currentMode === 'standalone'
+            ? (shot.standaloneModePrompt || shot.aiVideoPrompt || shot.compiledVideoPrompt || '')
+            : (shot.referenceModePrompt || shot.aiVideoPrompt || shot.compiledVideoPrompt || '');
+
+        const codeBlock = document.createElement('div');
+        codeBlock.className = 'prompt-code-block';
+        codeBlock.textContent = decodeEntities(promptText);
+        colPrompt.appendChild(codeBlock);
+
+        // Primary Copy Button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn-emerald-copy';
+        copyBtn.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+          </svg>
+          Copy Video Prompt
+        `;
+        copyBtn.onclick = () => copyText(promptText, copyBtn);
+        colPrompt.appendChild(copyBtn);
+
+        split.appendChild(colPrompt);
+        card.appendChild(split);
         container.appendChild(card);
       });
     }
 
-    document.getElementById("btn-refresh").addEventListener("click", () => {
-      loadStudioData();
-      showToast("Refreshed!");
-    });
+    // Export Screenplay as clean Markdown file
+    function exportScreenplayMarkdown() {
+      if (!currentSessionData) return;
+      const data = currentSessionData;
+      const brand = data.company || data.brand || 'Brand';
+      const prod = data.product || '';
+      const goal = data.goal || '';
+      const premise = data.coreTheme?.themePremise || data.coreTheme?.themeTitle || '';
+      const shots = data.compiledShots || [];
 
-    // Initial load and polling every 3 seconds
-    loadStudioData();
-    setInterval(loadStudioData, 3000);
+      let md = `# Brand Film Screenplay: ${brand}\n\n`;
+      md += `* **Product:** ${prod}\n`;
+      md += `* **Campaign Goal:** ${goal}\n`;
+      md += `* **Framework Preset:** ${data.presetId || 'standard'}\n\n`;
+      md += `## Core Campaign Premise\n${premise}\n\n---\n\n`;
+
+      md += `## Production Asset Bible\n\n`;
+      const reg = data.assets || data.assetRegistry;
+      if (reg) {
+        md += `### Cast & Characters\n`;
+        (reg.characters || []).forEach(c => {
+          md += `- **${c.id} · ${c.name}** (${c.role || 'Lead'}): ${c.appearancePrompt}\n`;
+        });
+        md += `\n### Locations & Sets\n`;
+        (reg.environments || []).forEach(e => {
+          md += `- **${e.id} · ${e.name}**: ${e.environmentPrompt} (Lighting: ${e.lightingProfile})\n`;
+        });
+        if (reg.product) {
+          md += `\n### Hero Product\n`;
+          md += `- **PROD_01 · ${reg.product.name}**: ${reg.product.packagingAppearance} (${reg.product.heroAngle})\n`;
+        }
+      }
+
+      md += `\n---\n\n## Production Screenplay & Shot Breakdown\n\n`;
+
+      shots.forEach(s => {
+        md += `### Scene ${String(s.sceneNumber).padStart(2, '0')}: ${s.narrativeTitle || s.storyBeatSummary} (${s.durationSeconds}s)\n`;
+        md += `- **Act:** ${s.actTitle}\n`;
+        md += `- **Camera:** ${s.cameraSpec?.lensMm} ${s.cameraSpec?.aperture} · ${s.cameraSpec?.framingAndAngle} · ${s.cameraSpec?.singleContinuousMovement}\n`;
+        md += `- **Physical Blocking:** ${s.visualBlocking}\n`;
+        if (s.onCameraSpokenDialogue && s.onCameraSpokenDialogue !== 'NONE') {
+          md += `- **On-Camera Dialogue (Lip-Sync):** "${s.onCameraSpokenDialogue}"\n`;
+        }
+        if (s.postProductionVoiceover && s.postProductionVoiceover !== 'NONE') {
+          md += `- **Post-Production Voiceover:** "${s.postProductionVoiceover}"\n`;
+        }
+        if (s.sfxAndAmbience && s.sfxAndAmbience !== 'NONE') {
+          md += `- **SFX & Ambience:** ${s.sfxAndAmbience}\n`;
+        }
+        if (s.onScreenTextOverlay && s.onScreenTextOverlay !== 'NONE') {
+          md += `- **On-Screen Graphic:** ${s.onScreenTextOverlay}\n`;
+        }
+        md += `- **Editorial Cut Note:** ${s.editorCutNote}\n\n`;
+        md += `#### AI Video Prompts:\n`;
+        md += `**Reference Mode (Kling 3.0 / Veo 3.1):**\n\`\`\`\n${s.referenceModePrompt}\n\`\`\`\n\n`;
+        md += `**Standalone Full-Text Mode:**\n\`\`\`\n${s.standaloneModePrompt}\n\`\`\`\n\n---\n\n`;
+      });
+
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `screenplay-${brand.toLowerCase().replace(/[^a-z0-9]/g, '-')}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Exported screenplay markdown!');
+    }
+
+    // Auto-fetch data initially and poll every 3 seconds
+    fetchStudioData();
+    setInterval(fetchStudioData, 3000);
   </script>
 </body>
 </html>

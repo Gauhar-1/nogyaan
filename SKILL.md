@@ -1,6 +1,6 @@
 ---
 name: ad-director
-description: Studio-Grade Video Ad Director & Production Orchestrator with isolated DAG sessions, 1/2/3/R decision branching, preset-scoped dialogue rules, physical continuity anchors, and reference-tagged kinetic video prompts.
+description: Studio-Grade Video Ad Director & Production Orchestrator with isolated DAG sessions, dedicated lock_core_theme, 1/2/3/R decision branching, physical continuity anchors, and iterative per-scene kinetic video prompt compilation.
 ---
 
 # AD DIRECTOR MCP PROTOCOL (SKILL GUIDE)
@@ -36,9 +36,10 @@ When starting a conversation or opening a new chat tab:
 ### LAW 2: ALWAYS USE MCP TOOLS FOR EVERY STATE CHANGE
 - **NEVER** simulate a step, scene progression, or asset lock in plain text.
 - Intake briefs MUST call `init_brief`.
+- Core theme selection MUST call `lock_core_theme`.
 - Every single narrative progression MUST call `branch_scene`.
 - Asset definitions MUST call `lock_assets`.
-- Shot breakdown MUST call `compile_shots`.
+- Shot breakdown MUST call `compile_single_scene` sequentially (Scene 1, then 2, up to N).
 - Skipping tool calls or hallucinating updates without executing an MCP tool is a catastrophic violation.
 
 ### LAW 3: PRESET-SCOPED DIALOGUE RULES
@@ -49,28 +50,20 @@ When starting a conversation or opening a new chat tab:
 
 ---
 
-## 3. THE 1/2/3/R BRANCHING CONTRACT & CONTINUITY BRIDGES
+## 3. SEPARATING CORE THEME & PHYSICAL SCENES
 
-Every narrative turn MUST present exactly 3 creative options and 1 recalibration option, ending strictly with the exact prompt:
+1. **`lock_core_theme` (Abstract Concept):**
+   - A Core Theme is an overarching campaign premise, NOT a physical scene. It must NEVER have an `exit_frame_anchor`.
+   - Call `lock_core_theme` with `chosen_theme_id` ("1" | "2" | "3"), `theme_title`, and `theme_premise`.
+   - Transitions state to `SCENE_1_SETUP`.
 
-* **[OPTION 1]:** Route 1 (Emotional / Incident / Pattern Interrupt)
-* **[OPTION 2]:** Route 2 (Friction / Parody / Pain Point)
-* **[OPTION 3]:** Route 3 (Quiet Underdog / Kinetic Speedrun / Transformation)
-* **[OPTION R]:** Recalibrate (Explore a fresh angle or incorporate user feedback)
+2. **`branch_scene` (Physical Scenes 1 to 4):**
+   - **Scene 1 (Act I — Setup):** Has NO incoming `entry_frame_bridge`. Records `exit_frame_anchor` at the end of Scene 1 so Scene 2 can connect to it.
+   - **Scene > 1:** Enforces physical continuity from the previous scene's `exit_frame_anchor`.
 
 ### Ending Rule:
 Every narrative chat turn MUST end STRICTLY with:
 > **Reply 1, 2, 3, or R (regenerate).**
-
-### Stop-and-Wait Rule:
-After presenting options, **STOP IMMEDIATELY**. Do not generate subsequent scenes until the user selects 1, 2, 3, or R.
-
-### Physical Continuity Lock (`exit_frame_anchor`):
-When calling `branch_scene` with `action: 'commit'`, you MUST specify `exit_frame_anchor`: the exact physical posture, object state, and camera placement at the final millisecond of Scene N. The MCP server will return a mandatory continuity bridge block:
-```text
-[🔗 MANDATORY CONTINUITY BRIDGE]: Scene N ended at this exact physical frame: "<exit_frame_anchor>".
-Every single one of your 3 options for Scene N+1 MUST physically and visually connect to this exact state.
-```
 
 ---
 
@@ -78,34 +71,34 @@ Every single one of your 3 options for Scene N+1 MUST physically and visually co
 
 ```mermaid
 flowchart LR
-    A[CORE_THEME] --> B[SCENE_1_SETUP]
-    B --> C[SCENE_2_CATALYST]
-    C --> D[SCENE_3_TWIST]
-    D --> E[SCENE_4_CLIMAX]
-    E --> F[LOCK_ASSETS]
-    F --> G[COMPILE_SHOTS]
+    A[CORE_THEME] -->|lock_core_theme| B[SCENE_1_SETUP]
+    B -->|branch_scene| C[SCENE_2_CATALYST]
+    C -->|branch_scene| D[SCENE_3_TWIST]
+    D -->|branch_scene| E[SCENE_4_CLIMAX]
+    E -->|lock_assets| F[LOCK_ASSETS]
+    F -->|compile_single_scene| G[COMPILE_SHOTS]
     G --> H[COMPLETED]
 ```
 
-1. **`CORE_THEME`:** Initialized by `init_brief`. Establishes brand brief, session ID, and creative premise.
-2. **`SCENE_1_SETUP`:** Locked by `branch_scene(action: 'commit')`. Establishes world and characters.
-3. **`SCENE_2_CATALYST`:** Locked by `branch_scene`. Disrupts initial equilibrium with core tension.
-4. **`SCENE_3_TWIST`:** Locked by `branch_scene`. Unexpected emotional turn or hurdle.
-5. **`SCENE_4_CLIMAX`:** Locked by `branch_scene`. The emotional resolution and product revelation.
-6. **`LOCK_ASSETS`:** Handled by `lock_assets`. Validates `CHAR_01..N`, `BG_01..N`, and `PROD_01`.
-7. **`COMPILE_SHOTS`:** Handled by `compile_shots`. Compiles reference-tagged kinetic prompts.
-8. **`COMPLETED`:** Studio visual canvas active at `http://localhost:4321`.
-
 ---
 
-## 5. REFERENCE-TAGGED KINETIC PROMPTS (@CHAR_01, @BG_01, @PROD_01)
+## 5. ITERATIVE PER-SCENE COMPILATION (`compile_single_scene`)
 
-Modern video generation models (**Kling 3.0 Omni**, **Google Veo 3.1**, **Runway Gen-4.5**, **Seedance**) take reference images and break when given 80 words of repetitive static appearance text.
+Never compile scenes in one monolithic batch. Modern video diffusion models (**Kling 3.0**, **Veo 3.1**, **Runway Gen-4.5**, **Seedance**) require precision:
 
-During `compile_shots`, the server deterministically compiles prompts in this format:
-$$\text{[Refs: @CHAR\_01, @BG\_01]} \quad \text{85mm f/1.4, LOW\_ANGLE, DOLLY\_IN. } \quad \langle\text{kinetic motion}\rangle. \quad \text{Dialogue lip-sync: "}\langle\text{dialogue}\rangle\text{". Audio: }\langle\text{sfx}\rangle.$$
+1. **Continuous Take (Zero Internal Cuts):**
+   - Each take is a single continuous camera motion (4s–8s).
+   - Camera Spec: `{ lensMm, aperture, framingAndAngle, singleContinuousMovement }`.
+2. **Strict Audio Track Separation:**
+   - `on_camera_spoken_dialogue`: Only words physically spoken by visible character lips (in quotes, or "NONE").
+   - `post_production_voiceover`: Narrator voiceover for editor timeline (or "NONE"). NEVER inject VO into video prompt lip-sync!
+   - `sfx_and_ambience`: Atmospheric foley sound.
+   - `on_screen_text_overlay`: Post-production graphic typography (or "NONE").
+3. **Dual Prompt Generation (Reference Mode + Standalone Full-Text):**
+   - The server automatically compiles both `@CHAR_01` reference mode and standalone self-contained text prompts.
+4. **No Generic Slop:**
+   - `kinetic_action_description` must be >= 80 characters of physical character blocking and micro-movements. Vague placeholders ("interact in scene", "walks and talks", "then cuts to") are rejected.
 
-Inspect the full 3-Zone Production Studio Canvas anytime at **`http://localhost:4321`**:
-- **Zone 1:** The Approved Master Narrative Arc
-- **Zone 2:** Master Continuity Asset Bible (Midjourney / Flux copy buttons)
-- **Zone 3:** Two-Column Screenplay & AI Kinetic Video Prompt Matrix
+Inspect the 2-Pane Split Director's Workbench anytime at **`http://localhost:4321`**:
+- **Left Sticky Pane (30%):** Core Campaign Premise + Connected Act-by-Act Vertical Timeline.
+- **Right Workspace (70%):** 3-Column Asset Bible + Scene Matrix with dual prompt switcher and one-click copy.

@@ -16,6 +16,20 @@ export type FsmStage = (typeof FSM_STAGES)[number];
 export const ANTI_JARGON_REGEX =
   /\b(85mm|35mm|24mm|50mm|f\/1\.4|f\/1\.8|f\/2\.8|anamorphic|aspect ratio|16:9|9:16|bokeh)\b/i;
 
+export const KINETIC_ACTION_FORBIDDEN_REGEX =
+  /\b(interact in scene|interacts in scene|characters interact|walks and talks|then cuts to|cuts to next|scene cuts)\b/i;
+
+export const kineticActionDescriptionSchema = z
+  .string()
+  .min(
+    80,
+    'Kinetic action description must be at least 80 characters of detailed physical motion, character blocking, and camera physics.'
+  )
+  .refine((val) => !KINETIC_ACTION_FORBIDDEN_REGEX.test(val), {
+    message:
+      'VIOLATION: Generic placeholders or multiple cuts detected in kineticActionDescription (forbidden: "interact in scene", "walks and talks", "then cuts to"). Describe a single continuous take with specific physical micro-movements.'
+  });
+
 export const PresetSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -39,6 +53,15 @@ export const PresetSchema = z.object({
 
 export type Preset = z.infer<typeof PresetSchema>;
 
+export const CoreThemeSchema = z.object({
+  chosenThemeId: z.enum(['1', '2', '3']),
+  themeTitle: z.string().min(1),
+  themePremise: z.string().min(1),
+  lockedAt: z.string().default(() => new Date().toISOString())
+});
+
+export type CoreTheme = z.infer<typeof CoreThemeSchema>;
+
 export const NarrativeOptionSchema = z.object({
   id: z.enum(['1', '2', '3', 'R']),
   title: z.string().min(1),
@@ -52,10 +75,13 @@ export type NarrativeOption = z.infer<typeof NarrativeOptionSchema>;
 export const StoryNodeSchema = z.object({
   stage: z.enum(FSM_STAGES),
   sceneNumber: z.number().int().min(0),
+  actTitle: z.string().optional(),
+  title: z.string().optional(),
   chosenOptionId: z.string().optional(),
   chosenNarrativeSummary: z.string().min(1),
   exitFrameAnchor: z.string().optional(),
-  timestamp: z.string()
+  _internal_exit_anchor: z.string().optional(),
+  timestamp: z.string().default(() => new Date().toISOString())
 });
 
 export type StoryNode = z.infer<typeof StoryNodeSchema>;
@@ -101,24 +127,50 @@ export type AssetRegistry = z.infer<typeof AssetRegistrySchema>;
 export const CameraSpecSchema = z.object({
   lensMm: z.string().min(1),
   aperture: z.string().min(1),
-  angle: z.string().min(1),
-  movement: z.string().min(1)
+  framingAndAngle: z.string().default('Eye-level medium shot'),
+  singleContinuousMovement: z.string().default('Slow smooth push-in'),
+  // Aliases for backward compatibility:
+  angle: z.string().optional(),
+  movement: z.string().optional()
 });
 
 export type CameraSpec = z.infer<typeof CameraSpecSchema>;
 
+export const ResolvedAssetRefSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.string().optional(),
+  label: z.string(), // e.g., "The Shopper (CHAR_01)"
+  summary: z.string() // condensed visual anchor
+});
+
+export type ResolvedAssetRef = z.infer<typeof ResolvedAssetRefSchema>;
+
 export const CompiledShotSchema = z.object({
   sceneNumber: z.number().int().min(1),
   durationSeconds: z.number().positive(),
+  actTitle: z.string().default('Act I — Setup'),
+  narrativeTitle: z.string().default(''),
   storyBeatSummary: z.string().min(1),
-  entryFrameBridge: z.string().min(1),
-  screenplayAction: z.string().min(1),
-  spokenDialogue: z.string().min(1),
-  sfxAndAmbience: z.string().min(1),
-  editorCutNote: z.string().min(1),
+  entryFrameBridge: z.string().default(''),
+  visualBlocking: z.string().min(1),
   cameraSpec: CameraSpecSchema,
+  // Strict separation of audio tracks:
+  onCameraSpokenDialogue: z.string().default('NONE'),
+  postProductionVoiceover: z.string().default('NONE'),
+  sfxAndAmbience: z.string().default('NONE'),
+  onScreenTextOverlay: z.string().default('NONE'),
+  editorCutNote: z.string().default('Match cut on motion'),
   attachedAssetRefs: z.array(z.string()).min(1),
-  aiVideoPrompt: z.string().min(1)
+  attachedAssetsResolved: z.array(ResolvedAssetRefSchema).default([]),
+  // Dual Prompt Compiler Outputs:
+  referenceModePrompt: z.string().min(1),
+  standaloneModePrompt: z.string().min(1),
+  // Backward compatibility fields:
+  aiVideoPrompt: z.string().optional(),
+  screenplayAction: z.string().optional(),
+  spokenDialogue: z.string().optional(),
+  compiledVideoPrompt: z.string().optional()
 });
 
 export type CompiledShot = z.infer<typeof CompiledShotSchema>;
@@ -131,12 +183,15 @@ export const SessionStateSchema = z.object({
   product: z.string().min(1),
   goal: z.string().min(1),
   presetId: z.string().min(1),
+  brandFriction: z.string().optional(),
   stage: z.enum(FSM_STAGES),
+  coreTheme: CoreThemeSchema.optional(),
   lockedNodes: z.array(StoryNodeSchema).default([]),
+  scenes: z.array(StoryNodeSchema).default([]),
   prunedCount: z.number().int().min(0).default(0),
   pendingOptions: z.array(NarrativeOptionSchema).default([]),
   assets: AssetRegistrySchema.optional(),
-  compiledShots: z.array(CompiledShotSchema).optional(),
+  compiledShots: z.array(CompiledShotSchema).default([]),
   status: z.enum(['IN_PROGRESS', 'COMPLETED']).default('IN_PROGRESS')
 });
 
@@ -148,4 +203,3 @@ export const LatestActiveSchema = z.object({
 });
 
 export type LatestActive = z.infer<typeof LatestActiveSchema>;
-

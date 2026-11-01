@@ -32,7 +32,7 @@ export function registerMcpTools(
         {
           name: 'init_brief',
           description:
-            'Step 1: Initializes brand brief and creates a new isolated session. Sets stage to CORE_THEME. Scans for anti-jargon compliance. Requires company, product, and goal.',
+            'Step 1: Initializes brand brief and creates a new isolated session. Sets stage to CORE_THEME. Scans for anti-jargon compliance. Requires company, product, and goal. Claude must then call lock_core_theme.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -75,9 +75,41 @@ export function registerMcpTools(
           }
         },
         {
+          name: 'lock_core_theme',
+          description:
+            'Step 1.5: Locks the overarching Core Campaign Premise (an abstract narrative concept, NOT a physical scene). Transitions stage from CORE_THEME to SCENE_1_SETUP.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID (defaults to latest active)'
+              },
+              chosen_theme_id: {
+                type: 'string',
+                enum: ['1', '2', '3'],
+                description: 'Chosen core theme route ("1", "2", or "3")'
+              },
+              theme_title: {
+                type: 'string',
+                description: 'Short descriptive title of the selected theme'
+              },
+              theme_premise: {
+                type: 'string',
+                description: 'Full narrative premise and emotional core'
+              },
+              nextOptions: {
+                type: 'array',
+                description: 'Proposed 3 opening visual scenarios for Scene 1 (Act I — Setup)'
+              }
+            },
+            required: ['chosen_theme_id', 'theme_title', 'theme_premise']
+          }
+        },
+        {
           name: 'branch_scene',
           description:
-            'Step 2: Commits a narrative choice (1, 2, or 3) or regenerates (R). Enforces physical continuity lock (exit_frame_anchor) and anti-jargon gate.',
+            'Step 2: Commits physical Scene 1, 2, 3, or 4 with internal continuity bridges and prunes rejected options. Scene 1 has NO incoming entry frame. Scene > 1 enforces continuity from previous scene.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -92,7 +124,7 @@ export function registerMcpTools(
               },
               scene_number: {
                 type: 'number',
-                description: 'Scene number being locked (1 to 4)'
+                description: 'Physical scene number being locked (1 to 4)'
               },
               chosen_option_id: {
                 type: 'string',
@@ -118,12 +150,12 @@ export function registerMcpTools(
               },
               treatmentProse: {
                 type: 'string',
-                description: 'Detailed screenplay action'
+                description: 'Screenplay treatment action'
               },
               exit_frame_anchor: {
                 type: 'string',
                 description:
-                  'MANDATORY: Exact physical state, character posture, and location at final millisecond of this scene'
+                  'Exact physical posture, character position, and location at the final millisecond of this scene'
               },
               nextOptions: {
                 type: 'array',
@@ -141,7 +173,7 @@ export function registerMcpTools(
         {
           name: 'lock_assets',
           description:
-            'Step 3: Locks visual assets (characters, environments, and product). Enforces CHAR_01..N, BG_01..N, and PROD_01 IDs.',
+            'Step 3: Locks visual assets (characters CHAR_01..N, environments BG_01..N, and product PROD_01). Generates Midjourney/Flux reference prompts.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -166,9 +198,88 @@ export function registerMcpTools(
           }
         },
         {
+          name: 'compile_single_scene',
+          description:
+            'Step 4: Compiles ONE scene at a time with strict video diffusion rules (single continuous camera trajectory, separated onCameraSpokenDialogue vs VO, >= 80 chars physical blocking, dual reference/standalone prompts).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID (defaults to latest active)'
+              },
+              scene_number: {
+                type: 'number',
+                description: 'Scene number being compiled (1, 2, 3, or 4)'
+              },
+              duration_seconds: {
+                type: 'number',
+                description: 'Continuous take runtime in seconds (4s to 8s, default 5s)'
+              },
+              act_title: {
+                type: 'string',
+                description: 'Act title (e.g., "Act I — Setup", "Act II — Catalyst", "Act III — Twist", "Act IV — Climax")'
+              },
+              narrative_title: {
+                type: 'string',
+                description: 'Short creative title for this scene take'
+              },
+              story_beat_summary: {
+                type: 'string',
+                description: 'Preserved human story beat from the locked script'
+              },
+              entry_frame_bridge: {
+                type: 'string',
+                description: 'How this continuous take picks up from previous scene (or "NONE" for Scene 1)'
+              },
+              kinetic_action_description: {
+                type: 'string',
+                description:
+                  'MANDATORY: Minimum 80 characters of continuous physical motion, micro-movements, and camera physics. Zero generic slop ("interact in scene", "walks and talks", "then cuts to" are strictly rejected).'
+              },
+              camera_spec: {
+                type: 'object',
+                properties: {
+                  lensMm: { type: 'string', description: 'Lens focal length (e.g. "24mm", "35mm", "50mm", "85mm")' },
+                  aperture: { type: 'string', description: 'Lens aperture (e.g. "f/1.4", "f/2.8")' },
+                  framingAndAngle: { type: 'string', description: 'Framing & angle (e.g. "Low-angle medium close-up")' },
+                  singleContinuousMovement: { type: 'string', description: 'Continuous take movement (e.g. "Slow cinematic push-in")' }
+                },
+                required: ['lensMm', 'aperture', 'framingAndAngle', 'singleContinuousMovement']
+              },
+              on_camera_spoken_dialogue: {
+                type: 'string',
+                description: 'Exact words physically spoken by visible character moving lips on screen (or "NONE")'
+              },
+              post_production_voiceover: {
+                type: 'string',
+                description: 'Narrator voiceover added in post-production timeline (or "NONE")'
+              },
+              sfx_and_ambience: {
+                type: 'string',
+                description: 'Audio ambience and foley sound effects (or "NONE")'
+              },
+              on_screen_text_overlay: {
+                type: 'string',
+                description: 'Graphic title or typography overlay added in post (or "NONE")'
+              },
+              editor_cut_note: {
+                type: 'string',
+                description: 'Editorial cut transition note for human video editor'
+              },
+              attached_asset_refs: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Locked asset IDs present in this take (e.g. ["@CHAR_01", "@BG_01", "@PROD_01"])'
+              }
+            },
+            required: ['scene_number', 'kinetic_action_description', 'camera_spec', 'attached_asset_refs']
+          }
+        },
+        {
           name: 'compile_shots',
           description:
-            'Step 4: Compiles reference-tagged kinetic video prompts (@CHAR_01, @BG_01, @PROD_01) and cut guides. Launches Studio UI at http://localhost:4321.',
+            'Convenience batch compiler: Compiles multiple scenes in sequence. Use compile_single_scene for step-by-step control.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -178,11 +289,11 @@ export function registerMcpTools(
               },
               shots: {
                 type: 'array',
-                description: 'Array of scene shots to compile with cameraSpec and attachedAssetRefs'
+                description: 'Array of scene shots to compile'
               },
               openStudioUi: {
                 type: 'boolean',
-                description: 'Whether to open the local Studio UI in browser (default: true)'
+                description: 'Whether to open http://localhost:4321 in browser'
               }
             },
             required: ['shots']
@@ -246,14 +357,26 @@ export function registerMcpTools(
           lockedBrief,
           preset,
           _systemDirective: {
+            instruction:
+              'Present 3 distinct Core Campaign Premise options for the brand friction. When user selects 1, 2, or 3, call "lock_core_theme".',
             languageRule: preset.dialogueLanguageRule,
-            optionsRule: 'Show ONLY Option 1, Option 2, and Option 3. Do NOT create unapproved options or extra variants.',
-            endingRule: "End your response STRICTLY with: 'Reply 1, 2, 3, or R (regenerate).'",
-            antiJargonRule:
-              'VIOLATION: Do not include technical camera specs during narrative branching. Rewrite options focusing purely on emotion, cultural tropes, and storytelling.',
-            workflowRule: "STOP and wait for user selection. NEVER proceed past CORE_THEME without calling 'branch_scene'."
+            endingRule: "End your response STRICTLY with: 'Reply 1, 2, 3, or R (regenerate).'"
           }
         };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+        };
+      }
+
+      if (name === 'lock_core_theme') {
+        const result = sessionService.lockCoreTheme({
+          sessionId: input.session_id,
+          chosenThemeId: input.chosen_theme_id,
+          themeTitle: input.theme_title,
+          themePremise: input.theme_premise,
+          nextOptions: input.nextOptions
+        });
 
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
@@ -336,6 +459,30 @@ export function registerMcpTools(
         };
       }
 
+      if (name === 'compile_single_scene') {
+        const result = sessionService.compileSingleScene({
+          sessionId: input.session_id,
+          sceneNumber: input.scene_number,
+          durationSeconds: input.duration_seconds,
+          actTitle: input.act_title,
+          narrativeTitle: input.narrative_title,
+          storyBeatSummary: input.story_beat_summary,
+          entryFrameBridge: input.entry_frame_bridge,
+          kineticActionDescription: input.kinetic_action_description,
+          cameraSpec: input.camera_spec,
+          onCameraSpokenDialogue: input.on_camera_spoken_dialogue,
+          postProductionVoiceover: input.post_production_voiceover,
+          sfxAndAmbience: input.sfx_and_ambience,
+          onScreenTextOverlay: input.on_screen_text_overlay,
+          editorCutNote: input.editor_cut_note,
+          attachedAssetRefs: input.attached_asset_refs
+        });
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+        };
+      }
+
       if (name === 'compile_shots') {
         const activeSession = sessionService.loadSession(input.session_id);
         const preset = activeSession ? presetRegistry.getPresetById(activeSession.presetId) : undefined;
@@ -378,4 +525,3 @@ export function registerMcpTools(
     }
   });
 }
-
