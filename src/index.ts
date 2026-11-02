@@ -77,6 +77,43 @@ function startStudioServer(port: number = 4321): void {
       return;
     }
 
+    // Serve Static Assets from assets/ directory (e.g. /assets/logo.png)
+    if (parsedUrl.pathname.startsWith('/assets/')) {
+      const pkgRoot = getPackageRoot();
+      const relativeAsset = parsedUrl.pathname.replace(/^\/assets\//, '');
+      const assetFilePath = path.resolve(pkgRoot, 'assets', relativeAsset);
+      const assetsDir = path.resolve(pkgRoot, 'assets');
+
+      if (assetFilePath.startsWith(assetsDir) && fs.existsSync(assetFilePath)) {
+        try {
+          const stat = fs.statSync(assetFilePath);
+          if (stat.isFile()) {
+            const ext = path.extname(assetFilePath).toLowerCase();
+            const contentTypes: Record<string, string> = {
+              '.png': 'image/png',
+              '.svg': 'image/svg+xml',
+              '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg',
+              '.webp': 'image/webp',
+              '.gif': 'image/gif',
+              '.ico': 'image/x-icon'
+            };
+            const contentType = contentTypes[ext] || 'application/octet-stream';
+            res.writeHead(200, {
+              'Content-Type': contentType,
+              'Content-Length': stat.size,
+              'Cache-Control': 'public, max-age=86400'
+            });
+            fs.createReadStream(assetFilePath).pipe(res);
+            return;
+          }
+        } catch {}
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Asset Not Found');
+      return;
+    }
+
     // Serve Studio Visual Canvas
     if (parsedUrl.pathname === '/' || parsedUrl.pathname === '/index.html') {
       const pkgRoot = getPackageRoot();
