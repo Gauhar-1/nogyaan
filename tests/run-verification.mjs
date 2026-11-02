@@ -34,8 +34,8 @@ async function runTests() {
     "Brand name should have non-alphanumeric characters replaced by underscore"
   );
   assert.ok(
-    OUTPUT_DIR.endsWith(".noslop") || OUTPUT_DIR.endsWith(".ad-director"),
-    "Output directory must end with .noslop or .ad-director"
+    OUTPUT_DIR.endsWith(".nogyaan") || OUTPUT_DIR.endsWith(".noslop") || OUTPUT_DIR.endsWith(".ad-director"),
+    "Output directory must end with .nogyaan, .noslop, or .ad-director"
   );
 
   // Test AD_DIRECTOR_WORKSPACE environment variable override

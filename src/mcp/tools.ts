@@ -340,7 +340,7 @@ export function registerMcpTools(
         });
 
         const lockedBrief =
-          `### [🎬 noslop] BRAND BRIEF: ${session.company.toUpperCase()}\n` +
+          `### [🎬 nogyaan] BRAND BRIEF: ${session.company.toUpperCase()}\n` +
           `* **Product:** ${session.product}\n` +
           `* **Goal:** ${session.goal}\n` +
           `* **Storytelling Cartridge:** ${preset.name} (${preset.id})\n` +

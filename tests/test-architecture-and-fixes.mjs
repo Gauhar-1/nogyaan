@@ -53,7 +53,7 @@ async function runFixesVerification() {
   // ==========================================================================
   // Fix 2: Session Isolation & No Global State Mutating Across Tabs
   // ==========================================================================
-  console.log('▶ [Fix 2] Verifying Isolated Session Storage (.noslop/sessions/)...');
+  console.log('▶ [Fix 2] Verifying Isolated Session Storage (.nogyaan/sessions/)...');
   const tempWorkspace = path.resolve(process.cwd(), '.test-session-ws');
   if (fs.existsSync(tempWorkspace)) {
     fs.rmSync(tempWorkspace, { recursive: true, force: true });
@@ -102,7 +102,7 @@ async function runFixesVerification() {
   assert.strictEqual(loadedB.company, 'Chai Heritage');
   assert.strictEqual(loadedB.presetId, 'indian-d2c-story');
 
-  console.log('  ✔ Sessions stored strictly isolated under .noslop/sessions/ without collision.');
+  console.log('  ✔ Sessions stored strictly isolated under .nogyaan/sessions/ without collision.');
 
   // ==========================================================================
   // Section 1.A: Dedicated lock_core_theme (Abstract concept, not a scene)

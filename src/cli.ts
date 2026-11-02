@@ -2,7 +2,7 @@
 
 /**
  * @file src/cli.ts
- * @description Cross-Platform CLI and DX Orchestrator for noslop MCP Server.
+ * @description Cross-Platform CLI and DX Orchestrator for nogyaan MCP Server.
  * Safely configures Claude Desktop (Standard + Windows MSIX Store), Cursor, and Claude Code
  * with non-destructive JSON merges, timestamped backups, environment diagnostics, and automated rules deployment.
  */
@@ -154,10 +154,10 @@ export function getProjectClaudeCodeConfigPath(cwd: string = process.cwd()): str
 }
 
 /**
- * Resolves project-local Cursor rule target (./.cursor/rules/noslop.mdc).
+ * Resolves project-local Cursor rule target (./.cursor/rules/nogyaan.mdc).
  */
 export function getProjectCursorRulePath(cwd: string = process.cwd()): string {
-  return path.join(cwd, ".cursor", "rules", "noslop.mdc");
+  return path.join(cwd, ".cursor", "rules", "nogyaan.mdc");
 }
 
 // ============================================================================
@@ -179,9 +179,9 @@ export interface McpServerEntry {
 }
 
 /**
- * Non-destructively merges the "noslop" entry into a target JSON config.
+ * Non-destructively merges the "nogyaan" entry into a target JSON config.
  * - If file exists: validates JSON, creates timestamped backup in same folder,
- *   removes any stale "ad-director" entry, and merges ONLY mcpServers["noslop"].
+ *   removes any stale "ad-director" or "noslop" entry, and merges ONLY mcpServers["nogyaan"].
  * - If malformed: ABORTS immediately with error to protect user config.
  * - If file does not exist: creates directory recursively and writes clean template.
  */
@@ -244,13 +244,16 @@ export function safeInjectMcpServer(
         config.mcpServers = {};
       }
 
-      // Cleanly remove any old "ad-director" entry to eliminate duplicates
+      // Cleanly remove any old "ad-director" or "noslop" entry to eliminate duplicates
       if ("ad-director" in config.mcpServers) {
         delete config.mcpServers["ad-director"];
       }
+      if ("noslop" in config.mcpServers) {
+        delete config.mcpServers["noslop"];
+      }
 
-      // Register under "noslop"
-      config.mcpServers["noslop"] = serverEntry;
+      // Register under "nogyaan"
+      config.mcpServers["nogyaan"] = serverEntry;
 
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 
@@ -266,7 +269,7 @@ export function safeInjectMcpServer(
 
       const newConfig = {
         mcpServers: {
-          noslop: serverEntry,
+          nogyaan: serverEntry,
         },
       };
 
@@ -289,7 +292,7 @@ export function safeInjectMcpServer(
 }
 
 /**
- * Cleanly removes "noslop" and legacy "ad-director" from a config file while preserving all other servers.
+ * Cleanly removes "nogyaan", "noslop", and legacy "ad-director" from a config file while preserving all other servers.
  */
 export function safeRemoveMcpServer(
   configPath: string,
@@ -320,6 +323,10 @@ export function safeRemoveMcpServer(
 
     let removed = false;
     if (config?.mcpServers) {
+      if ("nogyaan" in config.mcpServers) {
+        delete config.mcpServers["nogyaan"];
+        removed = true;
+      }
       if ("noslop" in config.mcpServers) {
         delete config.mcpServers["noslop"];
         removed = true;
@@ -362,7 +369,7 @@ export function safeRemoveMcpServer(
 }
 
 /**
- * Copies SKILL.md into .cursor/rules/noslop.mdc with proper MDC frontmatter.
+ * Copies SKILL.md into .cursor/rules/nogyaan.mdc with proper MDC frontmatter.
  */
 export function installCursorRule(cwd: string = process.cwd()): boolean {
   try {
@@ -394,17 +401,19 @@ export function installCursorRule(cwd: string = process.cwd()): boolean {
       fs.mkdirSync(ruleDir, { recursive: true });
     }
 
-    // Remove old ad-director.mdc if present
-    const legacyRulePath = path.join(ruleDir, "ad-director.mdc");
-    if (fs.existsSync(legacyRulePath)) {
-      try {
-        fs.unlinkSync(legacyRulePath);
-      } catch {}
+    // Remove old legacy rules if present
+    for (const legacyName of ["noslop.mdc", "ad-director.mdc"]) {
+      const legacyRulePath = path.join(ruleDir, legacyName);
+      if (fs.existsSync(legacyRulePath)) {
+        try {
+          fs.unlinkSync(legacyRulePath);
+        } catch {}
+      }
     }
 
     // Format proper .mdc rule format for Cursor Agent
     const mdcHeader = `---
-description: noslop: State-Pruned Video Director & Storyboard MCP Server with 1/2/3/R decision branching and diffusion prompt compilation
+description: nogyaan: State-Pruned Video Director & Storyboard MCP Server with 1/2/3/R decision branching and diffusion prompt compilation
 globs: *
 alwaysApply: true
 ---
@@ -443,7 +452,7 @@ export function checkPortAvailable(port: number = 4321): Promise<boolean> {
 const program = new Command();
 
 program
-  .name("noslop")
+  .name("nogyaan")
   .description("State-Pruned Video Director & Storyboard MCP Server with DAG branching and visual workbench")
   .version("1.0.0");
 
@@ -452,11 +461,11 @@ program
 // ----------------------------------------------------------------------------
 program
   .command("init", { isDefault: true })
-  .description("Configure the noslop MCP server in Claude Desktop, Cursor, and Claude Code (Default)")
+  .description("Configure the nogyaan MCP server in Claude Desktop, Cursor, and Claude Code (Default)")
   .option("--local", "Configure with local Node.js path to dist/index.js for active development/testing")
   .option("--project", "Also configure project-local .cursor/mcp.json, .mcp.json, and install Cursor rules")
   .action(async (options) => {
-    console.log("\n🎬 \x1b[1m\x1b[32mnoslop\x1b[0m \x1b[1m\x1b[37m— Video Director MCP Client Injector & Installer\x1b[0m\n");
+    console.log("\n🎬 \x1b[1m\x1b[32mnogyaan\x1b[0m \x1b[1m\x1b[37m— Video Director MCP Client Injector & Installer\x1b[0m\n");
 
     const isLocal = Boolean(options.local);
     const isProject = Boolean(options.project);
@@ -477,6 +486,7 @@ program
         command: "node",
         args: [indexPath],
         env: {
+          NOGYAAN_WORKSPACE: projectRoot,
           NOSLOP_WORKSPACE: projectRoot,
           AD_DIRECTOR_WORKSPACE: projectRoot,
         },
@@ -487,10 +497,10 @@ program
     } else {
       serverEntry = {
         command: "npx",
-        args: ["-y", "noslop", "serve"],
+        args: ["-y", "nogyaan", "serve"],
       };
       console.log(`\x1b[36m• Running in Production mode (npx)\x1b[0m`);
-      console.log(`  Target: \x1b[33mnpx -y noslop serve\x1b[0m\n`);
+      console.log(`  Target: \x1b[33mnpx -y nogyaan serve\x1b[0m\n`);
     }
 
     const results: ConfigOpResult[] = [];
@@ -525,11 +535,11 @@ program
     for (const r of results) {
       if (r.status === "updated") {
         console.log(
-          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Configured 'noslop' in ${r.path} \x1b[90m(Backup: ${path.basename(r.backupPath || "")})\x1b[0m`
+          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Configured 'nogyaan' in ${r.path} \x1b[90m(Backup: ${path.basename(r.backupPath || "")})\x1b[0m`
         );
       } else if (r.status === "created") {
         console.log(
-          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Created new config with 'noslop' at ${r.path}`
+          `  \x1b[32m✔\x1b[0m \x1b[1m${r.client}:\x1b[0m Created new config with 'nogyaan' at ${r.path}`
         );
       } else if (r.status === "aborted") {
         hasAbort = true;
@@ -539,8 +549,8 @@ program
 
     console.log("\n" + "─".repeat(60) + "\n");
     if (!hasAbort) {
-      console.log("\x1b[32m\x1b[1m✅ noslop installed! Restart Claude Desktop / Cursor and type:\x1b[0m");
-      console.log(`\x1b[37m"Direct a video ad using noslop" or type "/preset-indian-d2c-story"\x1b[0m\n`);
+      console.log("\x1b[32m\x1b[1m✅ nogyaan installed! Restart Claude Desktop / Cursor and type:\x1b[0m");
+      console.log(`\x1b[37m"Direct a video ad using nogyaan" or type "/preset-indian-d2c-story"\x1b[0m\n`);
     } else {
       console.log("\x1b[33m⚠ Some targets were skipped or aborted due to syntax errors.\x1b[0m\n");
     }
@@ -551,12 +561,12 @@ program
 // ----------------------------------------------------------------------------
 program
   .command("studio")
-  .description("Launch and open the local noslop Director's Workbench UI in your browser")
+  .description("Launch and open the local nogyaan Director's Workbench UI in your browser")
   .option("-p, --port <port>", "Port to use for the visual studio", "4321")
   .action(async (opts) => {
     const port = parseInt(opts.port, 10) || 4321;
     const url = `http://localhost:${port}`;
-    console.log(`\n🎨 Opening noslop Studio at ${url}...\n`);
+    console.log(`\n🎨 Opening nogyaan Studio at ${url}...\n`);
     try {
       await open(url);
     } catch {
@@ -571,7 +581,7 @@ program
   .command("presets")
   .description("List all available storytelling presets and narrative cartridges")
   .action(async () => {
-    console.log("\n🎛️ \x1b[1m\x1b[32mnoslop\x1b[0m \x1b[1m\x1b[37m— Available Narrative Cartridges:\x1b[0m\n");
+    console.log("\n🎛️ \x1b[1m\x1b[32mnogyaan\x1b[0m \x1b[1m\x1b[37m— Available Narrative Cartridges:\x1b[0m\n");
     try {
       const registry = new PresetRegistryService();
       const presets = registry.getAllPresets();
@@ -592,7 +602,7 @@ program
   .command("doctor")
   .description("Verify system readiness, Node version, port 4321, and config file health")
   .action(async () => {
-    console.log("\n🩺 \x1b[1m\x1b[32mnoslop\x1b[0m \x1b[1m\x1b[37m— System Diagnostics (Doctor)\x1b[0m\n");
+    console.log("\n🩺 \x1b[1m\x1b[32mnogyaan\x1b[0m \x1b[1m\x1b[37m— System Diagnostics (Doctor)\x1b[0m\n");
 
     // 1. Node.js Version Check (>= 18)
     const nodeMajor = parseInt(process.versions.node.split(".")[0], 10);
@@ -622,7 +632,7 @@ program
     if (portFree) {
       console.log(`  \x1b[32m✔\x1b[0m Port 4321: Available for visual Studio Workbench server`);
     } else {
-      console.log(`  \x1b[33m⚠\x1b[0m Port 4321: In use (another instance of noslop Studio may be running)`);
+      console.log(`  \x1b[33m⚠\x1b[0m Port 4321: In use (another instance of nogyaan Studio may be running)`);
     }
 
     // 4. Config Files Syntax Health
@@ -639,13 +649,13 @@ program
         try {
           const raw = fs.readFileSync(c.path, "utf-8");
           const parsed = JSON.parse(raw);
-          const hasNoslop = Boolean(parsed.mcpServers?.["noslop"]);
-          const hasLegacy = Boolean(parsed.mcpServers?.["ad-director"]);
+          const hasNogyaan = Boolean(parsed.mcpServers?.["nogyaan"]);
+          const hasLegacy = Boolean(parsed.mcpServers?.["noslop"] || parsed.mcpServers?.["ad-director"]);
           let tag = "\x1b[90m[not configured]\x1b[0m";
-          if (hasNoslop) {
-            tag = "\x1b[32m[noslop configured]\x1b[0m";
+          if (hasNogyaan) {
+            tag = "\x1b[32m[nogyaan configured]\x1b[0m";
           } else if (hasLegacy) {
-            tag = "\x1b[33m[legacy ad-director detected — run 'noslop init' to update]\x1b[0m";
+            tag = "\x1b[33m[legacy mcp detected — run 'nogyaan init' to update]\x1b[0m";
           }
           console.log(`  \x1b[32m✔\x1b[0m ${c.name}: Valid JSON at ${c.path} ${tag}`);
         } catch (err: any) {
@@ -664,10 +674,10 @@ program
 // ----------------------------------------------------------------------------
 program
   .command("uninstall")
-  .description("Safely remove noslop MCP server from Claude Desktop and Cursor configs")
+  .description("Safely remove nogyaan MCP server from Claude Desktop and Cursor configs")
   .option("--project", "Also remove from project-local .cursor/mcp.json and .mcp.json")
   .action(async (options) => {
-    console.log("\n🧹 \x1b[1m\x1b[32mnoslop\x1b[0m \x1b[1m\x1b[37m— Uninstaller\x1b[0m\n");
+    console.log("\n🧹 \x1b[1m\x1b[32mnogyaan\x1b[0m \x1b[1m\x1b[37m— Uninstaller\x1b[0m\n");
 
     const targets = [
       ...getAllClaudeDesktopConfigTargets(),
@@ -690,9 +700,9 @@ program
     for (const t of targets) {
       const res = safeRemoveMcpServer(t.path, t.name);
       if (res.status === "removed") {
-        console.log(`  \x1b[32m✔\x1b[0m Removed 'noslop' from ${t.path} (Backup: ${path.basename(res.backupPath || "")})`);
+        console.log(`  \x1b[32m✔\x1b[0m Removed 'nogyaan' from ${t.path} (Backup: ${path.basename(res.backupPath || "")})`);
       } else if (res.status === "skipped") {
-        console.log(`  \x1b[90m○\x1b[0m 'noslop' was not present in ${t.path}`);
+        console.log(`  \x1b[90m○\x1b[0m 'nogyaan' was not present in ${t.path}`);
       } else if (res.status === "aborted") {
         console.error(`  \x1b[31m✖\x1b[0m ${res.error}`);
       }
@@ -706,7 +716,7 @@ program
 // ----------------------------------------------------------------------------
 program
   .command("serve")
-  .description("Launch the noslop Stdio MCP server")
+  .description("Launch the nogyaan Stdio MCP server")
   .action(async () => {
     await import("./index.js");
   });

@@ -36,14 +36,17 @@ export function isDirectoryWritable(dirPath: string): boolean {
 
 /**
  * Resilient workspace directory resolver:
- * 1. Honors NOSLOP_WORKSPACE or AD_DIRECTOR_WORKSPACE if set and writable.
+ * 1. Honors NOGYAAN_WORKSPACE, NOSLOP_WORKSPACE, or AD_DIRECTOR_WORKSPACE if set and writable.
  * 2. Checks process.cwd(); if it is a protected system dir (like C:\WINDOWS\system32 in MSIX)
- *    or not writable, automatically falls back to ~/.noslop-workspace.
+ *    or not writable, automatically falls back to ~/.nogyaan-workspace.
  * 3. Guarantees a safe, writable base directory for state persistence.
  */
 export function getWorkspaceDir(): string {
   // 1. Explicit environment override takes precedence
-  const envWs = process.env.NOSLOP_WORKSPACE || process.env.AD_DIRECTOR_WORKSPACE;
+  const envWs =
+    process.env.NOGYAAN_WORKSPACE ||
+    process.env.NOSLOP_WORKSPACE ||
+    process.env.AD_DIRECTOR_WORKSPACE;
   if (envWs && envWs.trim()) {
     const custom = path.resolve(envWs.trim());
     if (isDirectoryWritable(custom)) {
@@ -69,7 +72,7 @@ export function getWorkspaceDir(): string {
   }
 
   // 3. Fallback to user home directory
-  const fallback = path.join(os.homedir(), ".noslop-workspace");
+  const fallback = path.join(os.homedir(), ".nogyaan-workspace");
   try {
     fs.mkdirSync(fallback, { recursive: true });
   } catch {}
@@ -78,8 +81,10 @@ export function getWorkspaceDir(): string {
 
 export function getStorageDir(baseDir?: string): string {
   const ws = baseDir || getWorkspaceDir();
-  const primary = path.resolve(ws, ".noslop");
+  const primary = path.resolve(ws, ".nogyaan");
   if (fs.existsSync(primary)) return primary;
+  const legacyNoslop = path.resolve(ws, ".noslop");
+  if (fs.existsSync(legacyNoslop)) return legacyNoslop;
   const legacy = path.resolve(ws, ".ad-director");
   if (fs.existsSync(legacy)) return legacy;
   return primary;

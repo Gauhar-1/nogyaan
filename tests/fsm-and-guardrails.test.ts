@@ -42,9 +42,10 @@ async function runTests() {
     "Brand name should have non-alphanumeric characters replaced by underscore"
   );
   assert.ok(
+    OUTPUT_DIR === path.resolve(process.cwd(), ".nogyaan") ||
     OUTPUT_DIR === path.resolve(process.cwd(), ".noslop") ||
     OUTPUT_DIR === path.resolve(process.cwd(), ".ad-director"),
-    "Output directory must resolve to .noslop or .ad-director"
+    "Output directory must resolve to .nogyaan, .noslop, or .ad-director"
   );
   console.log("  ✔ Path safety and name sanitization passed.");
 

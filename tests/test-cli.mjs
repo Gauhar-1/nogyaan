@@ -68,7 +68,7 @@ async function runCliTests() {
   );
   assert.strictEqual(
     cursorRule,
-    path.join(sandboxDir, ".cursor", "rules", "noslop.mdc")
+    path.join(sandboxDir, ".cursor", "rules", "nogyaan.mdc")
   );
   console.log("  ✔ All OS-aware and project-local paths resolved accurately.");
 
@@ -87,7 +87,7 @@ async function runCliTests() {
   assert.ok(fs.existsSync(targetFile), "Config file should be created");
 
   const parsedCreated = JSON.parse(fs.readFileSync(targetFile, "utf-8"));
-  assert.deepStrictEqual(parsedCreated.mcpServers["noslop"], serverEntry);
+  assert.deepStrictEqual(parsedCreated.mcpServers["nogyaan"], serverEntry);
   console.log("  ✔ Clean config file and parent folders created recursively.");
 
   // ==========================================================================
@@ -109,7 +109,7 @@ async function runCliTests() {
 
   const updatedEntry = {
     command: "npx",
-    args: ["-y", "noslop", "serve"],
+    args: ["-y", "nogyaan", "serve"],
   };
 
   const mergeRes = safeInjectMcpServer(targetFile, "TestClientA", updatedEntry);
@@ -121,8 +121,8 @@ async function runCliTests() {
   assert.ok(parsedMerged.mcpServers.sqlite, "Existing server 'sqlite' must be preserved");
   assert.ok(parsedMerged.mcpServers.github, "Existing server 'github' must be preserved");
   assert.strictEqual(parsedMerged.customUserSettings.theme, "dark", "User settings must be preserved");
-  // noslop must be merged
-  assert.deepStrictEqual(parsedMerged.mcpServers["noslop"], updatedEntry);
+  // nogyaan must be merged
+  assert.deepStrictEqual(parsedMerged.mcpServers["nogyaan"], updatedEntry);
   console.log("  ✔ Existing servers and user settings strictly preserved with safety backup.");
 
   // ==========================================================================
@@ -151,19 +151,19 @@ async function runCliTests() {
   assert.strictEqual(removeRes.status, "removed");
 
   const parsedAfterRemove = JSON.parse(fs.readFileSync(targetFile, "utf-8"));
-  assert.strictEqual(parsedAfterRemove.mcpServers["noslop"], undefined, "noslop must be removed");
+  assert.strictEqual(parsedAfterRemove.mcpServers["nogyaan"], undefined, "nogyaan must be removed");
   assert.ok(parsedAfterRemove.mcpServers.sqlite, "Other servers like sqlite must remain untouched");
   assert.ok(parsedAfterRemove.mcpServers.github, "Other servers like github must remain untouched");
-  console.log("  ✔ noslop cleanly removed without affecting other servers.");
+  console.log("  ✔ nogyaan cleanly removed without affecting other servers.");
 
   // ==========================================================================
-  // Test 6: Cursor Rule Installation (.cursor/rules/noslop.mdc)
+  // Test 6: Cursor Rule Installation (.cursor/rules/nogyaan.mdc)
   // ==========================================================================
   console.log("▶ [Test 6] Testing Cursor Rule Installation (.mdc)...");
   const ruleSuccess = installCursorRule(sandboxDir);
   assert.ok(ruleSuccess, "installCursorRule should return true");
   const installedRulePath = getProjectCursorRulePath(sandboxDir);
-  assert.ok(fs.existsSync(installedRulePath), "noslop.mdc must exist");
+  assert.ok(fs.existsSync(installedRulePath), "nogyaan.mdc must exist");
 
   const ruleContent = fs.readFileSync(installedRulePath, "utf-8");
   assert.ok(ruleContent.includes("alwaysApply: true"), "Must contain alwaysApply in frontmatter");
@@ -193,7 +193,7 @@ async function runCliTests() {
   assert.ok(initLocalOutput.includes("Local Development mode (--local)"), "Must indicate --local mode");
   assert.ok(initLocalOutput.includes("Restart Claude Desktop / Cursor"), "Must include restart prompt");
   assert.ok(
-    initLocalOutput.includes("Direct a video ad using noslop"),
+    initLocalOutput.includes("Direct a video ad using nogyaan"),
     "Must include the exact quickstart prompt"
   );
   console.log("  ✔ 'node dist/cli.js init --local --project' executed and output quickstart prompt.");

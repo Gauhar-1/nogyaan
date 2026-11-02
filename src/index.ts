@@ -2,7 +2,7 @@
 
 /**
  * @file src/index.ts
- * @description Master Stdio MCP Server Entry Point for noslop.
+ * @description Master Stdio MCP Server Entry Point for nogyaan.
  * Enforces strict FSM stages, Zod schemas, Anti-Jargon validation,
  * referential integrity checks, and serves the Studio UI on http://localhost:4321.
  */
@@ -111,14 +111,14 @@ function startStudioServer(port: number = 4321): void {
 
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`[noslop] Studio canvas port ${port} is already active.`);
+      console.error(`[nogyaan] Studio canvas port ${port} is already active.`);
     } else {
-      console.error('[noslop] Studio server error:', err);
+      console.error('[nogyaan] Studio server error:', err);
     }
   });
 
   server.listen(port, () => {
-    console.error(`[noslop] Studio visual canvas running at http://localhost:${port}`);
+    console.error(`[nogyaan] Studio visual canvas running at http://localhost:${port}`);
   });
 }
 
@@ -128,7 +128,7 @@ function startStudioServer(port: number = 4321): void {
 
 const server = new Server(
   {
-    name: 'noslop',
+    name: 'nogyaan',
     version: '1.0.0'
   },
   {
@@ -151,15 +151,22 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
     resources: [
       {
-        uri: 'noslop://story_graph',
-        name: 'noslop Story Graph',
+        uri: 'nogyaan://story_graph',
+        name: 'nogyaan Story Graph',
         description:
           'Authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
         mimeType: 'application/json'
       },
       {
+        uri: 'noslop://story_graph',
+        name: 'nogyaan Story Graph (Legacy noslop Alias)',
+        description:
+          'Legacy alias for authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
+        mimeType: 'application/json'
+      },
+      {
         uri: 'ad-director://story_graph',
-        name: 'noslop Story Graph (Legacy Alias)',
+        name: 'nogyaan Story Graph (Legacy ad-director Alias)',
         description:
           'Legacy alias for authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
         mimeType: 'application/json'
@@ -170,6 +177,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
 
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   if (
+    request.params.uri === 'nogyaan://story_graph' ||
     request.params.uri === 'noslop://story_graph' ||
     request.params.uri === 'ad-director://story_graph'
   ) {
@@ -196,10 +204,10 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('[noslop] noslop MCP Server running on stdio.');
+  console.error('[nogyaan] nogyaan MCP Server running on stdio.');
 }
 
 main().catch((err) => {
-  console.error('[noslop] Fatal server error:', err);
+  console.error('[nogyaan] Fatal server error:', err);
   process.exit(1);
 });

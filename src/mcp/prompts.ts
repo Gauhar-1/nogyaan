@@ -14,7 +14,7 @@ export function registerMcpPrompts(
     const presets = presetRegistry.getAllPresets();
     const prompts = presets.map((preset) => ({
       name: `preset-${preset.id}`,
-      description: `[noslop] Initialize an ad storyboard with ${preset.name} (${preset.philosophy || preset.description})`,
+      description: `[nogyaan] Initialize an ad storyboard with ${preset.name} (${preset.philosophy || preset.description})`,
       arguments: [
         {
           name: 'company_and_product',

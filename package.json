@@ -1,10 +1,10 @@
 {
-  "name": "noslop",
+  "name": "nogyaan",
   "version": "1.0.0",
   "description": "State-Pruned Video Director & Storyboard MCP Server with DAG story branching, studio workbench, and diffusion model prompt compilation.",
   "type": "module",
   "bin": {
-    "noslop": "./dist/cli.js"
+    "nogyaan": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "files": [
@@ -23,7 +23,7 @@
     "dev": "tsc -w"
   },
   "keywords": [
-    "noslop",
+    "nogyaan",
     "mcp",
     "model-context-protocol",
     "storyboard",
