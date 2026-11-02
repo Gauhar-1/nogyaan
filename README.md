@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.svg" alt="noslop logo" width="88" height="88" />
+  <img src="assets/char.png" alt="noslop logo" width="88" height="88" />
 
   # noslop
 
@@ -59,12 +59,12 @@ npx noslop init
 }
 ```
 
-### Option B: Local Development Setup
+**Option C: Local Development Setup**
 
 Clone the repository and build:
 
 ```bash
-git clone https://github.com/your-org/noslop.git
+git clone https://github.com/Gauhar-1/noslop.git
 cd noslop
 npm install
 npm run build
@@ -76,6 +76,18 @@ node dist/cli.js init --local
 node dist/cli.js doctor
 ```
 
+### 💻 CLI Command Reference
+
+| Command | Usage / Example | Description |
+|---|---|---|
+| `init` | `npx noslop init` | Automatically injects `noslop` into Claude Desktop (Standard & MSIX), Cursor Global, and Claude Code. |
+| `init --project` | `npx noslop init --project` | Injects into project-local `.cursor/mcp.json` and `.mcp.json`, and installs `.cursor/rules/noslop.mdc`. |
+| `init --local` | `node dist/cli.js init --local`<br>`npx noslop init --local` | Injects the local repository build into client configs for testing before npm publication. |
+| `doctor` | `node dist/cli.js doctor`<br>`npx noslop doctor` | Verifies Node.js runtime, build files, port 4321 availability, and audits JSON health across all client configs. |
+| `studio` | `npx noslop studio` | Directly launches the 2-Pane Director's Workbench UI at `http://localhost:4321`. |
+| `presets` | `npx noslop presets` | Lists all active narrative cartridges (`presets/*.json`) and their dialogue language rules. |
+| `uninstall` | `npx noslop uninstall` | Safely removes `noslop` (and legacy entries) from all detected client configs without touching other servers. |
+
 ---
 
 ## How `noslop` Works (4 Keystrokes, Zero Prompt Engineering)
@@ -85,7 +97,7 @@ node dist/cli.js doctor
    * `/preset-dev-product-launch` — High-tempo SaaS & dev-tool launch videos (strictly 100% English).
    * `/preset-tiktok-ugc-hook` — 3-second scroll-stoppers and direct-response retention arcs.
 2. **Branch & Prune (`1`, `2`, `3`, `R`):**
-   Claude proposes 3 options for each story beat. When you type `2`, `noslop` **physically deletes Options 1 and 3 from `.noslop/sessions/`** so rejected ideas never bleed into later scenes, and locks the **physical exit frame** of Scene $N$ so Scene $N+1$ starts from the exact millisecond the previous shot ended.
+   Claude proposes 3 options for each story beat. When you type `2`, `noslop` **physically deletes Options 1 and 3 from `.noslop/sessions/`** so rejected ideas never bleed into later scenes, and locks the **physical exit frame** of Scene N so Scene N+1 starts from the exact millisecond the previous shot ended.
 3. **Lock Your Cast & Set First (`CHAR_01`, `BG_01`, `PROD_01`):**
    Before compiling camera shots, `noslop` locks your character turnaround, environment lighting, and product specs with one-click **Midjourney / Flux reference image prompts**.
 4. **Open the 2-Pane Split Director's Workbench (`http://localhost:4321`):**
@@ -105,19 +117,16 @@ node dist/cli.js doctor
 
 ---
 
-
-
----
-
 ## 🛠️ MCP Tools Reference
 
 | Tool | Valid Stage | Inputs | Description |
 |---|---|---|---|
 | `list_presets` | Any | None | Lists available storytelling frameworks, descriptions, and strict dialogue rules. |
 | `init_brief` | Initial | `company`, `product`, `goal`, `preset`, `brandFriction` | Validates brief, initializes isolated session, and locks stage to `CORE_THEME`. |
-| `branch_scene` | Narrative (`CORE_THEME` – `SCENE_4_CLIMAX`) | `action`, `chosen_option_id`, `chosen_narrative_summary`, `exit_frame_anchor`, `nextOptions` | Commits option (`1`, `2`, `3`) or regenerates (`R`), wipes pruned branches, and returns the physical continuity bridge. |
-| `lock_assets` | `LOCK_ASSETS` (after Scene 4) | `characters` (`CHAR_01..N`), `environments` (`BG_01..N`), `product` (`PROD_01`) | Locks canonical visual asset references and generates Midjourney / Flux prompts. |
-| `compile_shots` | `COMPILE_SHOTS` (after Lock Assets) | `shots`, `openStudioUi` | Compiles reference-tagged kinetic prompts, checks referential integrity, and opens `http://localhost:4321`. |
+| `lock_core_theme` | `CORE_THEME` | `session_id`, `chosen_theme_id`, `theme_title`, `theme_premise` | Locks the overarching Core Campaign Premise (an abstract narrative concept, NOT a physical scene) and transitions stage to `SCENE_1_SETUP`. |
+| `branch_scene` | Narrative (`SCENE_1_SETUP` – `SCENE_4_CLIMAX`) | `session_id`, `action`, `scene_number`, `chosen_option_id`, `exit_frame_anchor`, `nextOptions` | Commits physical scene (`1`, `2`, `3`) or regenerates (`R`), wipes pruned branches, and enforces physical continuity bridges. |
+| `lock_assets` | `LOCK_ASSETS` (after Scene 4) | `session_id`, `characters` (`CHAR_01..N`), `environments` (`BG_01..N`), `product` (`PROD_01`) | Locks canonical visual asset references and generates Midjourney / Flux reference prompts. |
+| `compile_single_scene` | `COMPILE_SHOTS` (after Lock Assets) | `session_id`, `scene_number`, `kinetic_action_description`, `camera_spec`, `attached_asset_refs` | Compiles single-take camera physics, separates Post-Prod VO from Lip-Sync, and updates the Studio Workbench. |
 
 ---
 
@@ -130,8 +139,8 @@ node dist/cli.js doctor
    ad_goal: Reconnect busy corporate workers with afternoon family tea rituals
    ```
 
-2. **Branch through narrative scenes**:
-   Claude presents Option 1, Option 2, Option 3, and Option R.
+2. **Lock core theme & branch physical scenes**:
+   Claude proposes 3 Core Campaign Premise options. Once locked via `lock_core_theme`, Claude steps through Scene 1 to Scene 4 via `branch_scene` (1/2/3/R).
    ```text
    Reply: 1
    ```
@@ -139,8 +148,8 @@ node dist/cli.js doctor
 3. **Lock continuity and assets**:
    After Scene 4 Climax, Claude locks visual assets (`@CHAR_01`, `@BG_01`, `@PROD_01`).
 
-4. **Review in Studio Canvas**:
-   Claude compiles the shots and automatically opens **`http://localhost:4321`** to inspect the narrative arc, generate reference PNGs, and copy AI video prompts.
+4. **Compile scenes & review in Studio Workbench**:
+   Claude compiles each scene via `compile_single_scene` and automatically opens **`http://localhost:4321`** to inspect the narrative arc, generate reference PNGs, and copy AI video prompts.
 
 ---
 
@@ -183,11 +192,11 @@ noslop/
 │   │   └── dag-store.ts        # Hardened state machine with FSM locks
 │   ├── tools/                  # Tool execution handlers (1 to 4)
 │   ├── ui/
-│   │   └── studio-app.html     # 3-Zone Dark Mode Production Studio UI
+│   │   └── studio-app.html     # 2-Pane Split Director's Workbench UI
 │   ├── cli.ts                  # Cross-platform client injector
 │   └── index.ts                # Master stdio MCP server & UI web server
 ├── tests/                      # Automated verification test suites
-├── SKILL.md                    # Antigravity & Claude Skill instructions
+├── SKILL.md                    # Claude Code, Claude Desktop & Cursor Skill instructions
 └── package.json
 ```
 
@@ -195,5 +204,5 @@ noslop/
 
 ## 📄 License
 
-MIT © Antigravity Team
+MIT © MD Gohar Khan
 
