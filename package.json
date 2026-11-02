@@ -35,7 +35,7 @@
     "claude",
     "cursor"
   ],
-  "author": "Antigravity Team",
+  "author": "MD Gohar Khan",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.0",

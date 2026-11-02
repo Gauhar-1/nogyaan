@@ -27,7 +27,7 @@ import { executeCompileShots } from "../src/tools/4-compile-shots.js";
 async function runTests() {
   console.log("🎬 Starting Hardened FSM & Guardrails Verification Suite...\n");
 
-  const testDir = path.resolve(process.cwd(), ".ad-director-test");
+  const testDir = path.resolve(process.cwd(), ".nogyaan-test");
   if (fs.existsSync(testDir)) {
     fs.rmSync(testDir, { recursive: true, force: true });
   }
@@ -42,10 +42,8 @@ async function runTests() {
     "Brand name should have non-alphanumeric characters replaced by underscore"
   );
   assert.ok(
-    OUTPUT_DIR === path.resolve(process.cwd(), ".nogyaan") ||
-    OUTPUT_DIR === path.resolve(process.cwd(), ".noslop") ||
-    OUTPUT_DIR === path.resolve(process.cwd(), ".ad-director"),
-    "Output directory must resolve to .nogyaan, .noslop, or .ad-director"
+    OUTPUT_DIR === path.resolve(process.cwd(), ".nogyaan"),
+    "Output directory must resolve to .nogyaan"
   );
   console.log("  ✔ Path safety and name sanitization passed.");
 

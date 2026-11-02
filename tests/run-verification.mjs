@@ -34,28 +34,28 @@ async function runTests() {
     "Brand name should have non-alphanumeric characters replaced by underscore"
   );
   assert.ok(
-    OUTPUT_DIR.endsWith(".nogyaan") || OUTPUT_DIR.endsWith(".noslop") || OUTPUT_DIR.endsWith(".ad-director"),
-    "Output directory must end with .nogyaan, .noslop, or .ad-director"
+    OUTPUT_DIR.endsWith(".nogyaan"),
+    "Output directory must end with .nogyaan"
   );
 
-  // Test AD_DIRECTOR_WORKSPACE environment variable override
-  const originalEnv = process.env.AD_DIRECTOR_WORKSPACE;
+  // Test NOGYAAN_WORKSPACE environment variable override
+  const originalEnv = process.env.NOGYAAN_WORKSPACE;
   const customWorkspace = path.resolve(process.cwd(), ".custom-test-ws");
-  process.env.AD_DIRECTOR_WORKSPACE = customWorkspace;
+  process.env.NOGYAAN_WORKSPACE = customWorkspace;
   const customStore = new DAGStore();
   assert.strictEqual(
     customStore.getWorkspaceDir(),
     customWorkspace,
-    "DAGStore must honor AD_DIRECTOR_WORKSPACE environment variable"
+    "DAGStore must honor NOGYAAN_WORKSPACE environment variable"
   );
   // Cleanup custom workspace
   if (fs.existsSync(customWorkspace)) {
     fs.rmSync(customWorkspace, { recursive: true, force: true });
   }
   if (originalEnv) {
-    process.env.AD_DIRECTOR_WORKSPACE = originalEnv;
+    process.env.NOGYAAN_WORKSPACE = originalEnv;
   } else {
-    delete process.env.AD_DIRECTOR_WORKSPACE;
+    delete process.env.NOGYAAN_WORKSPACE;
   }
   console.log("  ✔ Path safety, name sanitization, and workspace override passed.");
 

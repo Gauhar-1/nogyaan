@@ -2,7 +2,7 @@
  * @file tests/test-architecture-and-fixes.mjs
  * @description Comprehensive automated test suite verifying:
  * - Fix 1: Dynamic MCP Prompts registration (/preset-*) & list_presets tool
- * - Fix 2: Isolated Session DAG storage (.ad-director/sessions/<slug>-<id>.json & latest-active.json)
+ * - Fix 2: Isolated Session DAG storage (.nogyaan/sessions/<slug>-<id>.json & latest-active.json)
  * - Fix 3: Dedicated lock_core_theme (abstract concept) + Physical Scene continuity
  * - Fix 4: Strict Preset-Scoped Language Gate (Hinglish vs 100% English)
  * - Fix 5: Iterative compile_single_scene with 5 video diffusion rules & slop rejection

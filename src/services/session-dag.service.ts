@@ -73,7 +73,7 @@ export class SessionDagService {
   }
 
   private resolveWorkspaceDir(): string {
-    // 1. Check environment variable override (NOGYAAN_WORKSPACE or legacy NOSLOP_WORKSPACE / AD_DIRECTOR_WORKSPACE)
+    // 1. Check environment variable override (NOGYAAN_WORKSPACE or legacy environment overrides)
     const envWs =
       process.env.NOGYAAN_WORKSPACE ||
       process.env.NOSLOP_WORKSPACE ||

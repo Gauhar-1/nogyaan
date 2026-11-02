@@ -36,7 +36,7 @@ export function isDirectoryWritable(dirPath: string): boolean {
 
 /**
  * Resilient workspace directory resolver:
- * 1. Honors NOGYAAN_WORKSPACE, NOSLOP_WORKSPACE, or AD_DIRECTOR_WORKSPACE if set and writable.
+ * 1. Honors NOGYAAN_WORKSPACE if set and writable.
  * 2. Checks process.cwd(); if it is a protected system dir (like C:\WINDOWS\system32 in MSIX)
  *    or not writable, automatically falls back to ~/.nogyaan-workspace.
  * 3. Guarantees a safe, writable base directory for state persistence.
@@ -107,7 +107,7 @@ export function sanitizeBrandOrProjectName(name: string): string {
 }
 
 /**
- * Returns a safe subfolder path within .ad-director, ensuring no path traversal.
+ * Returns a safe subfolder path within .nogyaan, ensuring no path traversal.
  */
 export function getSafeSubfolder(subfolderName: string, baseDir?: string): string {
   const root = getStorageDir(baseDir);

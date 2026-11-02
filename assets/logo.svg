@@ -60,7 +60,7 @@
   <!-- Small Prune Cut indicator -->
   <path d="M 112 170 L 124 182 M 124 170 L 112 182" stroke="#EF4444" stroke-width="2" stroke-linecap="round" />
 
-  <!-- Branch 2: Center LOCKED (The Single Pure 'noslop' Golden Path) -->
+  <!-- Branch 2: Center LOCKED (The Single Pure 'nogyaan' Golden Path) -->
   <path d="M 56 128 L 140 128" stroke="url(#emeraldGrad)" stroke-width="6" stroke-linecap="round" filter="url(#emeraldGlow)" />
   <circle cx="98" cy="128" r="5" fill="#34D399" />
   <circle cx="140" cy="128" r="8" fill="#10B981" filter="url(#emeraldGlow)" />

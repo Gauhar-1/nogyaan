@@ -1,9 +1,9 @@
 <div align="center">
-  <img src="assets/char.png" alt="nogyaan logo" width="88" height="88" />
+  <img src="assets/logo.svg" alt="nogyaan logo" width="88" height="88" />
 
   # nogyaan
 
-  **One-shot prompts make AI video slop. Real directors cut the context.**
+  **AI wants to give you gyaan. Real directors just want the shot.**
 
   An MCP server + Local Director's Workbench that stops Claude from hallucinating multi-scene video scripts. Steer stories with 1 keystroke (`1`, `2`, `3`), prune rejected ideas from context memory, lock your Cast & Set (`CHAR_01`), and compile single-take camera prompts for **Kling 3.0, Veo 3.1, Runway Gen-4.5, and Seedance**.
 

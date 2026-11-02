@@ -156,20 +156,6 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
         description:
           'Authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
         mimeType: 'application/json'
-      },
-      {
-        uri: 'noslop://story_graph',
-        name: 'nogyaan Story Graph (Legacy noslop Alias)',
-        description:
-          'Legacy alias for authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
-        mimeType: 'application/json'
-      },
-      {
-        uri: 'ad-director://story_graph',
-        name: 'nogyaan Story Graph (Legacy ad-director Alias)',
-        description:
-          'Legacy alias for authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
-        mimeType: 'application/json'
       }
     ]
   };
@@ -178,8 +164,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   if (
     request.params.uri === 'nogyaan://story_graph' ||
-    request.params.uri === 'noslop://story_graph' ||
-    request.params.uri === 'ad-director://story_graph'
+    request.params.uri.endsWith('://story_graph')
   ) {
     const session = sessionService.loadSession();
     return {

@@ -181,7 +181,7 @@ export interface McpServerEntry {
 /**
  * Non-destructively merges the "nogyaan" entry into a target JSON config.
  * - If file exists: validates JSON, creates timestamped backup in same folder,
- *   removes any stale "ad-director" or "noslop" entry, and merges ONLY mcpServers["nogyaan"].
+ *   removes any legacy entry, and merges ONLY mcpServers["nogyaan"].
  * - If malformed: ABORTS immediately with error to protect user config.
  * - If file does not exist: creates directory recursively and writes clean template.
  */
@@ -244,7 +244,7 @@ export function safeInjectMcpServer(
         config.mcpServers = {};
       }
 
-      // Cleanly remove any old "ad-director" or "noslop" entry to eliminate duplicates
+      // Cleanly remove any legacy server entries to eliminate duplicates
       if ("ad-director" in config.mcpServers) {
         delete config.mcpServers["ad-director"];
       }
@@ -292,7 +292,7 @@ export function safeInjectMcpServer(
 }
 
 /**
- * Cleanly removes "nogyaan", "noslop", and legacy "ad-director" from a config file while preserving all other servers.
+ * Cleanly removes "nogyaan" and legacy entries from a config file while preserving all other servers.
  */
 export function safeRemoveMcpServer(
   configPath: string,
@@ -487,8 +487,6 @@ program
         args: [indexPath],
         env: {
           NOGYAAN_WORKSPACE: projectRoot,
-          NOSLOP_WORKSPACE: projectRoot,
-          AD_DIRECTOR_WORKSPACE: projectRoot,
         },
       };
       console.log(`\x1b[36m• Running in Local Development mode (--local)\x1b[0m`);
