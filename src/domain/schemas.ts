@@ -192,6 +192,7 @@ export const SessionStateSchema = z.object({
   pendingOptions: z.array(NarrativeOptionSchema).default([]),
   assets: AssetRegistrySchema.optional(),
   compiledShots: z.array(CompiledShotSchema).default([]),
+  directorsCut: z.lazy(() => DirectorsCutSchema).optional(),
   status: z.enum(['IN_PROGRESS', 'COMPLETED']).default('IN_PROGRESS')
 });
 
@@ -203,3 +204,146 @@ export const LatestActiveSchema = z.object({
 });
 
 export type LatestActive = z.infer<typeof LatestActiveSchema>;
+
+// ============================================================================
+// Tier 2: The Director's Shot Compiler (The Schema & Interfaces)
+// ============================================================================
+
+export type RenderMedium =
+  | 'Live-Action Cinematic'
+  | '2D Anime'
+  | '3D Pixar Style'
+  | 'Stop Motion';
+
+export const RenderMediumSchema = z.enum([
+  'Live-Action Cinematic',
+  '2D Anime',
+  '3D Pixar Style',
+  'Stop Motion'
+]);
+
+export interface AudioStem {
+  dialogue: string | null;
+  sfx: string;
+}
+
+export const AudioStemSchema = z.object({
+  dialogue: z.string().nullable(),
+  sfx: z.string()
+});
+
+export interface SubShot {
+  shot_id: string; // e.g., "S01_SH02_SUB_A"
+  sub_shot_type: string; // e.g., "Master - Reaction", "Extreme Close Up - Action"
+  cinematic_prompt: string; // ONLY camera, lighting, action. NO medium styles.
+}
+
+export const SubShotSchema = z.object({
+  shot_id: z.string().min(1),
+  sub_shot_type: z.string().min(1),
+  cinematic_prompt: z.string().min(1)
+});
+
+export interface SceneCoverage {
+  scene_id: string;
+  narrative_block: string;
+  audio_stem: AudioStem;
+  coverage: SubShot[];
+}
+
+export const SceneCoverageSchema = z.object({
+  scene_id: z.string().min(1),
+  narrative_block: z.string().min(1),
+  audio_stem: AudioStemSchema,
+  coverage: z.array(SubShotSchema).min(1)
+});
+
+export interface DirectorsCut {
+  global_render_medium: RenderMedium;
+  scenes: SceneCoverage[];
+}
+
+export const DirectorsCutSchema = z.object({
+  global_render_medium: RenderMediumSchema,
+  scenes: z.array(SceneCoverageSchema).min(1)
+});
+
+// ============================================================================
+// Component 2: The Heuristic System Prompt (The Logic Engine)
+// ============================================================================
+
+export const DIRECTOR_SYSTEM_PROMPT = `You are an expert AI Cinematographer and Director's Shot Compiler for "nogyaan".
+Your mission is to compile a finalized 4-scene narrative video ad script into a highly structured, cinematic JSON shot list ("DirectorsCut") optimized for AI video generation diffusion models (Kling, Runway Gen-4.5, Google Veo) and post-production dubbing.
+
+You MUST strictly enforce the following rules:
+
+A. The Coverage Matrix (Routing)
+Analyze the narrative block for each scene and break it into sub-shots based on these archetypes:
+
+1. The Emotional Shift (Realization/Reaction):
+   Output exactly 2 sub-shots:
+   - Sub-shot [1]: Medium tracking establishing shot capturing the emotional trigger.
+   - Sub-shot [2]: Push-in Extreme Close-Up on the eyes.
+   Sub-shot types: "Medium Tracking - Establishing", "Push-in Extreme Close Up - Eyes".
+
+2. The Exchange (Dialogue/Handover):
+   Output exactly 3 sub-shots:
+   - Sub-shot [1]: Over-the-shoulder (OTS) Character A.
+   - Sub-shot [2]: Over-the-shoulder (OTS) Character B.
+   - Sub-shot [3]: Macro insert of the object/hands.
+   Sub-shot types: "Over-the-shoulder - Character A", "Over-the-shoulder - Character B", "Macro Insert - Hands/Object".
+
+3. The Technical Action (Phone UI, cooking):
+   Output exactly 3 sub-shots:
+   - Sub-shot [1]: Wide establishing.
+   - Sub-shot [2]: POV/High angle of hands.
+   - Sub-shot [3]: Extreme Macro of the interface/action.
+   Sub-shot types: "Wide - Establishing", "POV High Angle - Hands", "Extreme Macro - Interface/Action".
+
+4. Standard Action:
+   Output 1 single Master shot.
+   Sub-shot type: "Master - Continuous Action".
+
+Hard Constraint: Maximum 2 characters per frame. If a crowd exists, blur them using shallow depth of field (f/1.4).
+
+B. The Logic Tree (Tone to Lens Mapping)
+Apply these specific optical constraints based on the scene's tone:
+
+- Comedy/Awkward: 50mm lens, locked-off tripod, symmetrical framing, high-key even lighting.
+- Chaos/Disorientation: 24mm wide lens, handheld jitter, deep depth of field, harsh directional lighting.
+- Intimacy/Focus: 85mm-100mm lens, f/1.4 extreme shallow depth of field, slow fluid-head dolly, soft wrapping light with crushed shadows.
+- Scale/Power: 14mm ultra-wide lens, low angle looking up, slow crane movement, dramatic backlighting.
+
+C. Style-Agnostic Generation
+The "cinematic_prompt" field MUST ONLY contain camera angles, lighting, lens types, and physical action.
+It MUST NEVER mention the art style (e.g., never say "anime", "pixar", "photorealistic", "live-action", "3d animation").
+The frontend will prepend the global_render_medium at generation time.
+
+D. Sequential Shot ID Generation
+Generate unique sequential IDs for each sub-shot in this exact format:
+"S{scene_number:02d}_SH{sub_shot_number:02d}_SUB_{letter}"
+(e.g., Scene 1 Sub-shot 1: "S01_SH01_SUB_A", Scene 1 Sub-shot 2: "S01_SH02_SUB_B", Scene 2 Sub-shot 1: "S02_SH01_SUB_A").
+
+E. Output Format
+Output raw valid JSON ONLY conforming strictly to the DirectorsCut schema:
+{
+  "global_render_medium": "Live-Action Cinematic",
+  "scenes": [
+    {
+      "scene_id": "SCENE_01",
+      "narrative_block": "...",
+      "audio_stem": {
+        "dialogue": "..." or null,
+        "sfx": "..."
+      },
+      "coverage": [
+        {
+          "shot_id": "S01_SH01_SUB_A",
+          "sub_shot_type": "...",
+          "cinematic_prompt": "..."
+        }
+      ]
+    }
+  ]
+}`;
+

@@ -4,7 +4,7 @@
   "description": "State-Pruned Video Director & Storyboard MCP Server with DAG story branching, studio workbench, and diffusion model prompt compilation.",
   "type": "module",
   "bin": {
-    "nogyaan": "./dist/cli.js"
+    "nogyaan": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "files": [
@@ -15,7 +15,7 @@
     "build": "tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/ui', {recursive:true}); fs.copyFileSync('src/ui/studio-app.html', 'dist/ui/studio-app.html'); fs.cpSync('presets', 'dist/presets', {recursive:true}); fs.copyFileSync('SKILL.md', 'dist/SKILL.md'); try { fs.chmodSync('dist/cli.js', 0o755); fs.chmodSync('dist/index.js', 0o755); } catch(e){}\"",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
-    "test": "npm run build && node tests/run-verification.mjs && node tests/test-architecture-and-fixes.mjs && node tests/test-cli.mjs && node tests/test-stdio.mjs && node tests/test-system32-cwd.mjs",
+    "test": "npm run build && node tests/run-verification.mjs && node tests/test-architecture-and-fixes.mjs && node tests/test-cli.mjs && node tests/test-stdio.mjs && node tests/test-system32-cwd.mjs && node tests/test-directors-shot-compiler.mjs",
     "start": "node dist/index.js",
     "dev": "tsc -w"
   },
@@ -42,6 +42,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1",
     "typescript": "^5.7.3"
   }
 }

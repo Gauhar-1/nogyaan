@@ -21,6 +21,7 @@ import {
 import { PresetRegistryService } from './services/preset-registry.service.js';
 import { PromptCompilerService } from './services/prompt-compiler.service.js';
 import { SessionDagService } from './services/session-dag.service.js';
+import { DirectorsShotCompilerService } from './services/directors-shot-compiler.service.js';
 import { registerMcpPrompts } from './mcp/prompts.js';
 import { registerMcpTools } from './mcp/tools.js';
 
@@ -47,6 +48,28 @@ function getPackageRoot(): string {
 const promptCompiler = new PromptCompilerService();
 const presetRegistry = new PresetRegistryService();
 const sessionService = new SessionDagService(undefined, promptCompiler);
+const directorsCompiler = new DirectorsShotCompilerService(sessionService);
+
+function parseJsonBody<T = any>(req: http.IncomingMessage): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+      if (raw.length > 5 * 1024 * 1024) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : ({} as T));
+      } catch (err: any) {
+        reject(new Error(`Invalid JSON body: ${err.message}`));
+      }
+    });
+    req.on('error', reject);
+  });
+}
 
 // ============================================================================
 // 1. Studio Web Server (http://localhost:4321) - Zero HTML Entity Corruption
@@ -55,7 +78,8 @@ const sessionService = new SessionDagService(undefined, promptCompiler);
 function startStudioServer(port: number = 4321): void {
   const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(200);
@@ -73,6 +97,60 @@ function startStudioServer(port: number = 4321): void {
         res.end(JSON.stringify(currentSession, null, 2));
       } else {
         res.end(JSON.stringify({ status: 'NO_ACTIVE_SESSION' }));
+      }
+      return;
+    }
+
+    // API endpoint: Tier 2 Initial Compilation (POST /api/compile-shots)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/compile-shots') {
+      parseJsonBody(req)
+        .then(async (body) => {
+          try {
+            const cut = await directorsCompiler.compileDirectorsCut(body);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(cut, null, 2));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // API endpoint: Tier 2 Targeted Re-Roll (POST /api/reroll-shot)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/reroll-shot') {
+      parseJsonBody(req)
+        .then(async (body) => {
+          try {
+            const cut = await directorsCompiler.rerollSubShot(body);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(cut, null, 2));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // API endpoint: Get Current DirectorsCut (GET /api/directors-cut)
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/directors-cut') {
+      const sessionId = parsedUrl.searchParams.get('session_id') || undefined;
+      const cut = directorsCompiler.loadCurrentDirectorsCut(sessionId);
+      if (cut) {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(cut, null, 2));
+      } else {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ status: 'NO_DIRECTORS_CUT' }));
       }
       return;
     }
