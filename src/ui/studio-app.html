@@ -7,7 +7,22 @@
   <link rel="icon" type="image/png" href="/assets/logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Playfair+Display:ital,wght@0,500;0,700;1,400;1,600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['Merriweather', 'Playfair Display', 'Georgia', 'serif'],
+            sans: ['Inter', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <style>
@@ -1238,6 +1253,25 @@
     </div>
 
     <div class="header-controls">
+      <!-- Primary View Switcher: V2 Director Pitch vs V1 Workbench -->
+      <div class="segmented-control" style="margin-right: 8px;">
+        <button class="segment-btn active" id="btn-view-v2" onclick="switchMainView('v2')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polygon points="10 8 16 12 10 16 10 8"/>
+          </svg>
+          V2 Director Pitch (SSE Live)
+        </button>
+        <button class="segment-btn" id="btn-view-v1" onclick="switchMainView('v1')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M3 9h18"/>
+            <path d="M9 21V9"/>
+          </svg>
+          V1 Storyboard
+        </button>
+      </div>
+
       <!-- Global Prompt Mode Switcher -->
       <div class="segmented-control">
         <button class="segment-btn active" id="global-mode-ref" onclick="setGlobalPromptMode('ref')">
@@ -1278,8 +1312,11 @@
     </div>
   </header>
 
-  <!-- 2-Pane Split Director's Workbench Grid -->
-  <div class="workbench-grid">
+  <!-- V2 Architecture Live Dual-Format GUI Container -->
+  <div id="v2-director-container" class="flex w-full"></div>
+
+  <!-- 2-Pane Split Director's Workbench Grid (V1 Legacy Workbench) -->
+  <div class="workbench-grid" id="v1-workbench-container" style="display: none;">
 
     <!-- LEFT STICKY PANE (30% Width) -->
     <aside class="left-pane">
@@ -2327,10 +2364,530 @@
       }
     }
 
-    // Initialize React view once DOM is ready
+    // ========================================================================
+    // V2 Architecture: Dual-Format GUI (React + Tailwind CSS)
+    // ========================================================================
+
+    function switchMainView(mode) {
+      const v2Container = document.getElementById('v2-director-container');
+      const v1Container = document.getElementById('v1-workbench-container');
+      const btnV2 = document.getElementById('btn-view-v2');
+      const btnV1 = document.getElementById('btn-view-v1');
+
+      if (mode === 'v2') {
+        if (v2Container) v2Container.style.display = 'flex';
+        if (v1Container) v1Container.style.display = 'none';
+        if (btnV2) btnV2.classList.add('active');
+        if (btnV1) btnV1.classList.remove('active');
+      } else {
+        if (v2Container) v2Container.style.display = 'none';
+        if (v1Container) v1Container.style.display = 'grid';
+        if (btnV1) btnV1.classList.add('active');
+        if (btnV2) btnV2.classList.remove('active');
+      }
+    }
+
+    function initNogyaanV2View() {
+      const rootEl = document.getElementById('v2-director-container');
+      if (!rootEl || !window.React || !window.ReactDOM) return;
+
+      const e = React.createElement;
+
+      function NogyaanV2Viewer() {
+        const [state, setState] = React.useState(null);
+        const [isConnected, setIsConnected] = React.useState(false);
+        const [copiedShotId, setCopiedShotId] = React.useState(null);
+        const [reRollingNodeId, setReRollingNodeId] = React.useState(null);
+        const [notes, setNotes] = React.useState({});
+        const [collapsedPayloads, setCollapsedPayloads] = React.useState({});
+
+        React.useEffect(function() {
+          function loadInitial() {
+            fetch('/api/v2/state')
+              .then(function(res) { return res.json(); })
+              .then(function(data) { setState(data); })
+              .catch(function(err) { console.warn('Failed initial v2 state load:', err); });
+          }
+          loadInitial();
+
+          var evtSource;
+          try {
+            evtSource = new EventSource('/api/v2/events');
+            evtSource.onopen = function() { setIsConnected(true); };
+            evtSource.onmessage = function(ev) {
+              try {
+                var payload = JSON.parse(ev.data);
+                if (payload.type === 'INIT' || payload.type === 'STATE_UPDATED') {
+                  setState(payload.state);
+                }
+              } catch (err) {}
+            };
+            evtSource.onerror = function() { setIsConnected(false); };
+          } catch (e) {
+            var interval = setInterval(loadInitial, 3000);
+            return function() { clearInterval(interval); };
+          }
+
+          return function() {
+            if (evtSource) evtSource.close();
+          };
+        }, []);
+
+        function handleMediumChange(newMedium) {
+          fetch('/api/v2/medium', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ medium: newMedium })
+          })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+              if (data.state) setState(data.state);
+            });
+        }
+
+        function handleCopy(shotId, payload) {
+          var med = (state && state.global_medium) || 'Live-Action Cinematic';
+          var fullPrompt = '[' + med + '] ' + payload;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(fullPrompt);
+          } else {
+            var ta = document.createElement('textarea');
+            ta.value = fullPrompt;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          setCopiedShotId(shotId);
+          setTimeout(function() { setCopiedShotId(null); }, 2000);
+        }
+
+        function handleReroll(nodeId) {
+          var feedback = (notes[nodeId] || '').trim();
+          if (!feedback) return;
+          setReRollingNodeId(nodeId);
+          fetch('/api/v2/reroll-node', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ node_id: nodeId, user_feedback: feedback })
+          })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+              if (data.result && data.result.state) {
+                setState(data.result.state);
+                setNotes(function(prev) {
+                  var next = Object.assign({}, prev);
+                  delete next[nodeId];
+                  return next;
+                });
+              }
+            })
+            .catch(function(err) { console.error('Reroll failed:', err); })
+            .finally(function() { setReRollingNodeId(null); });
+        }
+
+        function toggleCollapse(shotId) {
+          setCollapsedPayloads(function(prev) {
+            var next = Object.assign({}, prev);
+            next[shotId] = !next[shotId];
+            return next;
+          });
+        }
+
+        if (!state) {
+          return e('div', { className: 'flex items-center justify-center h-[calc(100vh-56px)] w-full bg-slate-950 text-slate-400 font-sans' },
+            e('div', { className: 'flex flex-col items-center gap-3' }, [
+              e('div', { key: 'spin', className: 'w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin' }),
+              e('p', { key: 'txt', className: 'text-sm font-medium' }, 'Connecting to nogyaan V2 Engine...')
+            ])
+          );
+        }
+
+        var assets = state.assets || { characters: {}, backgrounds: {}, product: '' };
+        var global_medium = state.global_medium || 'Live-Action Cinematic';
+        var scenes = state.scenes || [];
+        var allScenesLocked = scenes.length >= 4 && scenes.every(function(s) { return !!s.locked_script; });
+        var hasActiveRefs = scenes.some(function(s) { return s.active_refs && s.active_refs.length > 0; });
+
+        function handleExtractAssets() {
+          fetch('/api/v2/extract-assets', { method: 'POST' })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+              if (data.state) setState(data.state);
+            })
+            .catch(function(err) { console.error('Failed to extract assets:', err); });
+        }
+
+        // 1. STICKY SIDEBAR: ASSET BIBLE (25% Width)
+        var sidebar = e('aside', {
+          key: 'sidebar',
+          className: 'w-1/4 min-w-[280px] max-w-[360px] h-[calc(100vh-56px)] bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0 z-20'
+        }, [
+          // Header
+          e('div', { key: 'sb-hdr', className: 'p-5 border-b border-slate-800 flex items-center justify-between' }, [
+            e('div', { key: 'title-grp', className: 'flex items-center gap-2.5' }, [
+              e('div', { key: 'icon', className: 'w-7 h-7 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-mono text-sm font-bold' }, 'N'),
+              e('div', { key: 'txt' }, [
+                e('h2', { key: 'h2', className: 'text-xs font-bold tracking-wider text-slate-100 uppercase font-mono' }, 'Asset Locker'),
+                e('span', { key: 'id', className: 'text-[11px] text-slate-400 font-mono block' }, state.project_id)
+              ])
+            ]),
+            e('div', { key: 'live-badge', className: 'flex items-center gap-1.5' }, [
+              e('span', { key: 'dot', className: 'w-2 h-2 rounded-full ' + (isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500') }),
+              e('span', { key: 'txt', className: 'text-[10px] uppercase font-mono text-slate-400' }, isConnected ? 'LIVE SSE' : 'POLLING')
+            ])
+          ]),
+
+          // Global Medium Selector
+          e('div', { key: 'medium-box', className: 'p-4 border-b border-slate-800 bg-slate-900/50' }, [
+            e('label', { key: 'lbl', className: 'block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2' }, 'Global Render Medium'),
+            e('select', {
+              key: 'sel',
+              value: global_medium,
+              onChange: function(ev) { handleMediumChange(ev.target.value); },
+              className: 'w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer font-sans'
+            }, [
+              e('option', { key: 'opt-live', value: 'Live-Action Cinematic' }, 'Live-Action Cinematic'),
+              e('option', { key: 'opt-anime', value: '2D Anime' }, '2D Anime'),
+              e('option', { key: 'opt-pixar', value: '3D Pixar Style' }, '3D Pixar Style')
+            ]),
+            e('p', { key: 'hint', className: 'mt-1.5 text-[11px] text-slate-500' }, 'Dynamically prepended to prompts on copy for video models.')
+          ]),
+
+          // Phase 2: Action button for Asset Extraction if 4 scenes locked
+          allScenesLocked && !hasActiveRefs && e('div', { key: 'extract-box', className: 'p-4 bg-emerald-500/10 border-b border-emerald-500/20' }, [
+            e('p', { key: 'p', className: 'text-xs text-emerald-300 font-medium mb-2' }, '4 Scenes locked! Tag active asset references:'),
+            e('button', {
+              key: 'btn',
+              onClick: handleExtractAssets,
+              className: 'w-full py-1.5 px-3 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wide transition-all font-mono'
+            }, 'Extract & Tag Active Assets')
+          ]),
+
+          // Scrollable Cards List
+          e('div', { key: 'cards-scroll', className: 'flex-1 overflow-y-auto p-4 space-y-4' }, [
+            // Product Card
+            e('div', { key: 'prod-card', className: 'bg-slate-800/60 border border-slate-700/80 rounded-lg p-3.5' }, [
+              e('div', { key: 'hdr', className: 'flex items-center justify-between mb-1.5' }, [
+                e('span', { key: 't', className: 'text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono' }, 'Hero Product'),
+                e('span', { key: 'b', className: 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' }, '@PROD_01')
+              ]),
+              e('p', { key: 'desc', className: 'text-xs text-slate-300 leading-relaxed font-sans' }, assets.product || 'No hero product set.')
+            ]),
+
+            // Characters Card
+            e('div', { key: 'char-card', className: 'bg-slate-800/60 border border-slate-700/80 rounded-lg p-3.5' }, [
+              e('div', { key: 'hdr', className: 'flex items-center justify-between mb-2' }, [
+                e('span', { key: 't', className: 'text-xs font-bold uppercase tracking-wider text-indigo-400 font-mono' }, 'Characters'),
+                e('span', { key: 'b', className: 'text-[10px] font-mono text-slate-400' }, Object.keys(assets.characters || {}).length + ' Total')
+              ]),
+              e('div', { key: 'list', className: 'space-y-2' },
+                Object.keys(assets.characters || {}).length === 0
+                  ? [e('p', { key: 'empty', className: 'text-xs italic text-slate-500' }, 'No characters registered.')]
+                  : Object.entries(assets.characters).map(function(pair) {
+                      return e('div', { key: pair[0], className: 'p-2 rounded bg-slate-900/70 border border-slate-800' }, [
+                        e('span', { key: 'id', className: 'text-[11px] font-mono font-bold text-indigo-300 block' }, '@' + pair[0]),
+                        e('p', { key: 'txt', className: 'text-xs text-slate-300 mt-0.5 leading-snug font-sans' }, pair[1])
+                      ]);
+                    })
+              )
+            ]),
+
+            // Backgrounds Card
+            e('div', { key: 'bg-card', className: 'bg-slate-800/60 border border-slate-700/80 rounded-lg p-3.5' }, [
+              e('div', { key: 'hdr', className: 'flex items-center justify-between mb-2' }, [
+                e('span', { key: 't', className: 'text-xs font-bold uppercase tracking-wider text-amber-400 font-mono' }, 'Environments'),
+                e('span', { key: 'b', className: 'text-[10px] font-mono text-slate-400' }, Object.keys(assets.backgrounds || {}).length + ' Total')
+              ]),
+              e('div', { key: 'list', className: 'space-y-2' },
+                Object.keys(assets.backgrounds || {}).length === 0
+                  ? [e('p', { key: 'empty', className: 'text-xs italic text-slate-500' }, 'No backgrounds registered.')]
+                  : Object.entries(assets.backgrounds).map(function(pair) {
+                      return e('div', { key: pair[0], className: 'p-2 rounded bg-slate-900/70 border border-slate-800' }, [
+                        e('span', { key: 'id', className: 'text-[11px] font-mono font-bold text-amber-300 block' }, '@' + pair[0]),
+                        e('p', { key: 'txt', className: 'text-xs text-slate-300 mt-0.5 leading-snug font-sans' }, pair[1])
+                      ]);
+                    })
+              )
+            ])
+          ])
+        ]);
+
+        // 2. MAIN TIMELINE (75% Width)
+        var timeline = e('main', {
+          key: 'timeline',
+          className: 'flex-1 h-[calc(100vh-56px)] overflow-y-auto bg-slate-950 p-8 space-y-10'
+        }, [
+          // Header
+          e('header', { key: 'hdr', className: 'flex items-center justify-between border-b border-slate-800 pb-5' }, [
+            e('div', { key: 'left' }, [
+              e('h1', { key: 'h1', className: 'text-xl font-bold tracking-tight text-slate-100 font-sans' }, 'Director\'s Storyboard & Shot Pitch'),
+              e('p', { key: 'sub', className: 'text-xs text-slate-400 mt-1 font-sans' }, 'Tier 1 Writer\'s Room & Tier 2 DP Pitch with live state synchronization.')
+            ]),
+            e('span', { key: 'cnt', className: 'text-xs font-mono px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-slate-300' },
+              scenes.length + ' Scenes in Sequence'
+            )
+          ]),
+
+          // Scenes Stack
+          scenes.length === 0
+            ? e('div', { key: 'empty', className: 'border border-dashed border-slate-800 rounded-xl p-12 text-center' }, [
+                e('p', { key: 'p1', className: 'text-base font-semibold text-slate-300 font-sans' }, 'No Scenes Created Yet'),
+                e('p', { key: 'p2', className: 'text-xs text-slate-500 mt-2 max-w-md mx-auto font-sans' },
+                  'Call pitch_script_options from your MCP client (Claude Desktop or Cursor) to start the Writer\'s Room.'
+                )
+              ])
+            : e('div', { key: 'scenes-list', className: 'space-y-12' },
+                scenes.map(function(scene, sIdx) {
+                  var locked_script = scene.locked_script;
+                  var shotsObj = scene.shots || {};
+                  var shotPairs = Object.entries(shotsObj);
+
+                  return e('section', {
+                    key: scene.scene_id || sIdx,
+                    className: 'bg-slate-900/40 border border-slate-800 rounded-xl p-6 transition-all'
+                  }, [
+                    // Scene Top Header
+                    e('div', { key: 'sc-hdr', className: 'flex items-center justify-between border-b border-slate-800/80 pb-4 mb-6' }, [
+                      e('div', { key: 'left', className: 'flex items-center gap-3' }, [
+                        e('span', { key: 'act', className: 'font-mono text-xs font-bold px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-200' }, 'ACT ' + (sIdx + 1)),
+                        e('h2', { key: 'id', className: 'text-base font-bold text-slate-100 font-mono' }, scene.scene_id)
+                      ]),
+                      locked_script
+                        ? e('span', { key: 'st', className: 'text-xs font-mono font-medium px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' },
+                            'SCRIPT LOCKED (' + locked_script.writer_persona + ')'
+                          )
+                        : e('span', { key: 'st-pen', className: 'text-xs font-mono font-medium px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400' },
+                            'PENDING SCRIPT'
+                          )
+                    ]),
+
+                    // Locked Script Box (Phase 1)
+                    locked_script && e('div', { key: 'script-box', className: 'mb-8 p-5 bg-slate-900/90 border border-slate-800 rounded-lg' }, [
+                      e('div', { key: 'hdr', className: 'flex items-center justify-between mb-3' }, [
+                        e('span', { key: 'lbl', className: 'text-xs uppercase font-bold tracking-wider text-slate-400 font-sans' }, 'Locked Narrative Beat'),
+                        e('span', { key: 'id', className: 'text-xs font-mono text-slate-500' }, locked_script.id || locked_script.option_id)
+                      ]),
+                      e('p', { key: 'narrative', className: 'text-sm text-slate-200 leading-relaxed font-sans mb-4' }, locked_script.txt || locked_script.narrative_block),
+
+                      // Active Asset Tags (Phase 2)
+                      scene.active_refs && scene.active_refs.length > 0 && e('div', { key: 'active-refs-row', className: 'pt-3 border-t border-slate-800/80 flex items-center gap-2 mb-3' }, [
+                        e('span', { key: 'lbl-ar', className: 'text-[11px] font-mono text-slate-400 uppercase tracking-wider' }, 'Tagged Active Refs:'),
+                        e('div', { key: 'pills', className: 'flex flex-wrap gap-1.5' },
+                          scene.active_refs.map(function(ref) {
+                            return e('span', { key: ref, className: 'text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-300' }, ref);
+                          })
+                        )
+                      ]),
+
+                      // Audio Stems Separation (if present)
+                      locked_script.audio_stem && e('div', { key: 'audio-stems', className: 'grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-slate-800 text-xs font-sans' }, [
+                        e('div', { key: 'd-box', className: 'p-3 bg-slate-950/60 rounded border border-slate-800/80' }, [
+                          e('span', { key: 'l', className: 'text-[11px] font-semibold text-indigo-400 uppercase tracking-wider block mb-1 font-mono' }, 'Dialogue (Lip-Sync Stem)'),
+                          e('p', { key: 'v', className: 'text-slate-300 italic' }, locked_script.audio_stem && locked_script.audio_stem.dialogue ? '"' + locked_script.audio_stem.dialogue + '"' : 'None (Action only)')
+                        ]),
+                        e('div', { key: 's-box', className: 'p-3 bg-slate-950/60 rounded border border-slate-800/80' }, [
+                          e('span', { key: 'l', className: 'text-[11px] font-semibold text-amber-400 uppercase tracking-wider block mb-1 font-mono' }, 'SFX & Ambience (Foley Stem)'),
+                          e('p', { key: 'v', className: 'text-slate-300' }, (locked_script.audio_stem && locked_script.audio_stem.sfx) || 'Ambient soundscape')
+                        ])
+                      ]),
+
+                      // Script Targeted Re-roll Note
+                      e('div', { key: 'script-reroll', className: 'mt-4 pt-3 border-t border-slate-800/60 flex items-center gap-2' }, [
+                        e('input', {
+                          key: 'inp',
+                          type: 'text',
+                          placeholder: 'Directorial note on script narrative...',
+                          value: notes[scene.scene_id] || '',
+                          onChange: function(ev) {
+                            var val = ev.target.value;
+                            setNotes(function(prev) {
+                              var next = Object.assign({}, prev);
+                              next[scene.scene_id] = val;
+                              return next;
+                            });
+                          },
+                          onKeyDown: function(ev) { if (ev.key === 'Enter') handleReroll(scene.scene_id); },
+                          disabled: reRollingNodeId === scene.scene_id,
+                          className: 'flex-1 bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans'
+                        }),
+                        e('button', {
+                          key: 'btn',
+                          onClick: function() { handleReroll(scene.scene_id); },
+                          disabled: reRollingNodeId === scene.scene_id || !notes[scene.scene_id]?.trim(),
+                          className: 'px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-xs font-semibold text-slate-200 transition-colors font-mono'
+                        }, reRollingNodeId === scene.scene_id ? 'Refining...' : 'Refine Script')
+                      ])
+                    ]),
+
+                    // DP Shot Pitch Coverage (Phase 3)
+                    e('div', { key: 'dp-shots' }, [
+                      e('div', { key: 'dp-hdr', className: 'flex items-center justify-between mb-4' }, [
+                        e('h3', { key: 'title', className: 'text-xs font-bold uppercase tracking-wider text-slate-300 font-mono' }, 'Director of Photography (DP) Coverage'),
+                        e('span', { key: 'cnt', className: 'text-xs font-mono text-slate-500' }, shotPairs.length + ' Shots')
+                      ]),
+
+                      shotPairs.length === 0
+                        ? e('p', { key: 'empty-shots', className: 'text-xs italic text-slate-500 py-3 font-sans' },
+                            'No shots pitched yet for this scene. Call pitch_shot_options to generate 3 treatments.'
+                          )
+                        : e('div', { key: 'shots-list', className: 'space-y-6' },
+                            shotPairs.map(function(pair) {
+                              var shotKey = pair[0];
+                              var lockedShot = pair[1]?.locked_shot;
+                              if (!lockedShot) return null;
+                              var nodeIdentifier = scene.scene_id + ':' + shotKey;
+                              var shotId = lockedShot.id || lockedShot.option_id || shotKey;
+                              var shotStyle = lockedShot.style || lockedShot.director_persona || 'Auteur';
+                              var shotTxt = lockedShot.txt || lockedShot.visual_intent || '';
+                              var shotPrmpt = lockedShot.prmpt || lockedShot.ai_payload || '';
+                              var isCopied = copiedShotId === shotId;
+                              var isReRolling = reRollingNodeId === nodeIdentifier;
+                              var isCollapsed = !!collapsedPayloads[shotId];
+
+                              return e('div', {
+                                key: shotKey,
+                                className: 'bg-slate-900 border border-slate-800 rounded-lg p-5 transition-all hover:border-slate-700 shadow-md'
+                              }, [
+                                // Shot Card Header with Persona & Neon Copy Button
+                                e('div', { key: 'sh-hdr', className: 'flex items-center justify-between mb-3' }, [
+                                  e('div', { key: 'sh-left', className: 'flex items-center gap-2' }, [
+                                    e('span', { key: 'k', className: 'font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300' }, shotKey),
+                                    e('span', { key: 'p', className: 'text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono' }, shotStyle)
+                                  ]),
+
+                                  // Neon Accented COPY FOR KLING/RUNWAY Button
+                                  e('button', {
+                                    key: 'btn-copy-kling',
+                                    onClick: function() { handleCopy(shotId, shotPrmpt); },
+                                    className: 'flex items-center gap-1.5 px-3.5 py-1.5 rounded text-xs font-bold tracking-wide uppercase transition-all shadow-md font-mono ' +
+                                      (isCopied
+                                        ? 'bg-emerald-400 text-slate-950 shadow-emerald-400/40 scale-95'
+                                        : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20 hover:scale-[1.02]')
+                                  }, isCopied ? '✓ COPIED!' : 'COPY FOR KLING/RUNWAY')
+                                ]),
+
+                                // Visual Intent (Serif Typography for Screenplay Feel)
+                                e('div', { key: 'vi-box', className: 'mb-4' }, [
+                                  e('span', { key: 'lbl', className: 'text-[11px] font-mono text-slate-500 uppercase tracking-wider block mb-1.5' }, 'Visual Intent'),
+                                  e('blockquote', { key: 'quote', className: 'font-serif text-base italic leading-relaxed text-slate-200 tracking-wide border-l-2 border-emerald-500/70 pl-3.5 py-0.5' },
+                                    '"' + shotTxt + '"'
+                                  )
+                                ]),
+
+                                // AI Payload (Collapsible Dark Terminal-Style Code Block)
+                                e('div', { key: 'ai-box', className: 'mb-4' }, [
+                                  e('div', { key: 'ai-hdr', className: 'flex items-center justify-between mb-1.5' }, [
+                                    e('span', { key: 'lbl', className: 'text-[11px] font-mono text-slate-500 uppercase tracking-wider' }, 'AI Video Diffusion Payload (Style-Agnostic)'),
+                                    e('button', {
+                                      key: 'btn-tog',
+                                      onClick: function() { toggleCollapse(shotId); },
+                                      className: 'text-[11px] font-mono text-slate-400 hover:text-slate-200 transition-colors'
+                                    }, isCollapsed ? 'Expand [▼]' : 'Collapse [▲]')
+                                  ]),
+                                  !isCollapsed && e('div', { key: 'term', className: 'bg-black/90 border border-slate-800 rounded p-3 font-mono text-xs text-emerald-400/90 leading-relaxed overflow-x-auto shadow-inner' }, [
+                                    e('span', { key: 'prompt-sign', className: 'text-slate-500 select-none mr-2' }, '$'),
+                                    e('span', { key: 'med-tag', className: 'text-emerald-300 font-semibold select-none' }, '[' + global_medium + '] '),
+                                    e('span', { key: 'body' }, shotPrmpt)
+                                  ])
+                                ]),
+
+                                // Inline Directorial Note Re-Roll Trigger
+                                e('div', { key: 'reroll-box', className: 'pt-3 border-t border-slate-800/80 flex items-center gap-2' }, [
+                                  e('input', {
+                                    key: 'inp-note',
+                                    type: 'text',
+                                    placeholder: 'Directorial note (e.g., tighter on eyes, make lighting harsher)...',
+                                    value: notes[nodeIdentifier] || '',
+                                    onChange: function(ev) {
+                                      var val = ev.target.value;
+                                      setNotes(function(prev) {
+                                        var next = Object.assign({}, prev);
+                                        next[nodeIdentifier] = val;
+                                        return next;
+                                      });
+                                    },
+                                    onKeyDown: function(ev) { if (ev.key === 'Enter') handleReroll(nodeIdentifier); },
+                                    disabled: isReRolling,
+                                    className: 'flex-1 bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans'
+                                  }),
+                                  e('button', {
+                                    key: 'btn-reroll',
+                                    onClick: function() { handleReroll(nodeIdentifier); },
+                                    disabled: isReRolling || !notes[nodeIdentifier]?.trim(),
+                                    className: 'px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-xs font-semibold text-slate-200 transition-colors font-mono'
+                                  }, isReRolling ? 'Re-Rolling...' : 'Re-Roll Shot')
+                                ])
+                              ]);
+                            })
+                          )
+                    ])
+                  ]);
+                })
+              )
+                                      className: 'text-[11px] font-mono text-slate-400 hover:text-slate-200 transition-colors'
+                                    }, isCollapsed ? 'Expand [▼]' : 'Collapse [▲]')
+                                  ]),
+                                  !isCollapsed && e('div', { key: 'term', className: 'bg-black/90 border border-slate-800 rounded p-3 font-mono text-xs text-emerald-400/90 leading-relaxed overflow-x-auto shadow-inner' }, [
+                                    e('span', { key: 'prompt-sign', className: 'text-slate-500 select-none mr-2' }, '$'),
+                                    e('span', { key: 'med-tag', className: 'text-emerald-300 font-semibold select-none' }, '[' + global_medium + '] '),
+                                    e('span', { key: 'body' }, lockedShot.ai_payload)
+                                  ])
+                                ]),
+
+                                // Inline Directorial Note Re-Roll Trigger
+                                e('div', { key: 'reroll-box', className: 'pt-3 border-t border-slate-800/80 flex items-center gap-2' }, [
+                                  e('input', {
+                                    key: 'inp-note',
+                                    type: 'text',
+                                    placeholder: 'Directorial note (e.g., tighter on eyes, make lighting harsher)...',
+                                    value: notes[nodeIdentifier] || '',
+                                    onChange: function(ev) {
+                                      var val = ev.target.value;
+                                      setNotes(function(prev) {
+                                        var next = Object.assign({}, prev);
+                                        next[nodeIdentifier] = val;
+                                        return next;
+                                      });
+                                    },
+                                    onKeyDown: function(ev) { if (ev.key === 'Enter') handleReroll(nodeIdentifier); },
+                                    disabled: isReRolling,
+                                    className: 'flex-1 bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans'
+                                  }),
+                                  e('button', {
+                                    key: 'btn-reroll',
+                                    onClick: function() { handleReroll(nodeIdentifier); },
+                                    disabled: isReRolling || !notes[nodeIdentifier]?.trim(),
+                                    className: 'px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-xs font-semibold text-slate-200 transition-colors font-mono'
+                                  }, isReRolling ? 'Re-Rolling...' : 'Re-Roll Shot')
+                                ])
+                              ]);
+                            })
+                          )
+                    ])
+                  ]);
+                })
+              )
+        ]);
+
+        return e('div', { className: 'flex h-[calc(100vh-56px)] w-full bg-slate-950 text-slate-100 font-sans overflow-hidden' }, [
+          sidebar,
+          timeline
+        ]);
+      }
+
+      const root = window.ReactDOM.createRoot(rootEl);
+      root.render(e(NogyaanV2Viewer));
+    }
+
+    // Initialize React views once DOM is ready
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initDirectorsCutView);
+      document.addEventListener('DOMContentLoaded', function() {
+        initNogyaanV2View();
+        initDirectorsCutView();
+      });
     } else {
+      initNogyaanV2View();
       initDirectorsCutView();
     }
 

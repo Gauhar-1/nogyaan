@@ -22,6 +22,12 @@ import { PresetRegistryService } from './services/preset-registry.service.js';
 import { PromptCompilerService } from './services/prompt-compiler.service.js';
 import { SessionDagService } from './services/session-dag.service.js';
 import { DirectorsShotCompilerService } from './services/directors-shot-compiler.service.js';
+import { StateManager } from './v2/state-manager.js';
+import { WritersRoomService } from './v2/writers-room.service.js';
+import { AssetLockerService } from './v2/asset-locker.service.js';
+import { DpPitchService } from './v2/dp-pitch.service.js';
+import { RerollService } from './v2/reroll.service.js';
+import { Medium } from './v2/types.js';
 import { registerMcpPrompts } from './mcp/prompts.js';
 import { registerMcpTools } from './mcp/tools.js';
 
@@ -49,6 +55,13 @@ const promptCompiler = new PromptCompilerService();
 const presetRegistry = new PresetRegistryService();
 const sessionService = new SessionDagService(undefined, promptCompiler);
 const directorsCompiler = new DirectorsShotCompilerService(sessionService);
+
+// Initialize V2 Architecture Services
+const stateManager = new StateManager();
+const writersRoom = new WritersRoomService(stateManager);
+const assetLocker = new AssetLockerService(stateManager);
+const dpPitch = new DpPitchService(stateManager);
+const rerollService = new RerollService(stateManager);
 
 function parseJsonBody<T = any>(req: http.IncomingMessage): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -155,6 +168,214 @@ function startStudioServer(port: number = 4321): void {
       return;
     }
 
+    // ========================================================================
+    // V2 Architecture Endpoints (State, SSE Stream, Pitch & Targeted Re-Roll)
+    // ========================================================================
+
+    // 1. Get V2 State (GET /api/v2/state)
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/v2/state') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(stateManager.getState(), null, 2));
+      return;
+    }
+
+    // 2. Server-Sent Events (SSE) Live Sync Stream (GET /api/v2/events)
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/v2/events') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+
+      // Send initial handshake and state
+      res.write(`: connected\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'INIT', state: stateManager.getState() })}\n\n`);
+
+      // Subscribe to state changes triggered by MCP tools or UI actions
+      const unsubscribe = stateManager.subscribe((updatedState) => {
+        try {
+          res.write(`data: ${JSON.stringify({ type: 'STATE_UPDATED', state: updatedState })}\n\n`);
+        } catch {}
+      });
+
+      // Keepalive heartbeat
+      const heartbeat = setInterval(() => {
+        try {
+          res.write(`: heartbeat\n\n`);
+        } catch {}
+      }, 15000);
+
+      req.on('close', () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+      });
+      return;
+    }
+
+    // 3. Update Global Medium (POST /api/v2/medium)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/medium') {
+      parseJsonBody<{ medium: Medium }>(req)
+        .then((body) => {
+          try {
+            const newState = stateManager.updateGlobalMedium(body.medium);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, state: newState }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 4. Update Asset Bible (POST /api/v2/assets)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/assets') {
+      parseJsonBody(req)
+        .then((body) => {
+          try {
+            const currentState = stateManager.getState();
+            const assets = {
+              characters: body.characters !== undefined ? body.characters : currentState.assets.characters,
+              backgrounds: body.backgrounds !== undefined ? body.backgrounds : currentState.assets.backgrounds,
+              product: body.product !== undefined ? body.product : currentState.assets.product
+            };
+            const newState = stateManager.updateAssetBible(assets);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, state: newState }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 5. Pitch Script Options (POST /api/v2/pitch-script)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/pitch-script') {
+      parseJsonBody(req)
+        .then(async (body) => {
+          try {
+            const options = await writersRoom.pitchScriptOptions(body);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, scene_id: body.scene_id, options }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 6. Lock Script Option (POST /api/v2/lock-script)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/lock-script') {
+      parseJsonBody(req)
+        .then((body) => {
+          try {
+            const newState = stateManager.lockScript(body.scene_id, body.script);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, state: newState }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 7. Pitch Shot Options (POST /api/v2/pitch-shot)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/pitch-shot') {
+      parseJsonBody(req)
+        .then(async (body) => {
+          try {
+            const options = await dpPitch.pitchShotOptions(body);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, scene_id: body.scene_id, shot_id: body.shot_id, options }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 8. Lock Shot Option (POST /api/v2/lock-shot)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/lock-shot') {
+      parseJsonBody(req)
+        .then((body) => {
+          try {
+            const newState = stateManager.lockShot(body.scene_id, body.shot_id, body.shot);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, state: newState }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 8.5. Extract Active Assets & Tag Scenes (POST /api/v2/extract-assets)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/extract-assets') {
+      assetLocker.extractActiveAssets()
+        .then((result) => {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ success: true, extraction: result.extraction, state: result.state }));
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 9. Targeted Re-Roll (POST /api/v2/reroll-node)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/reroll-node') {
+      parseJsonBody(req)
+        .then(async (body) => {
+          try {
+            const result = await rerollService.rerollNode({
+              node_id: body.node_id,
+              user_feedback: body.user_feedback
+            });
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, result }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
     // Serve Static Assets from assets/ directory (e.g. /assets/logo.png)
     if (parsedUrl.pathname.startsWith('/assets/')) {
       const pkgRoot = getPackageRoot();
@@ -258,10 +479,20 @@ const server = new Server(
 // Register Dynamic MCP Prompts for Claude Slash Commands (/preset-...)
 registerMcpPrompts(server, presetRegistry);
 
-// Register MCP Tools (list_presets, init_brief, branch_scene, lock_assets, compile_shots)
-registerMcpTools(server, sessionService, presetRegistry, promptCompiler);
+// Register MCP Tools (list_presets, init_brief, branch_scene, lock_assets, compile_shots, pitch_script_options, etc.)
+registerMcpTools(
+  server,
+  sessionService,
+  presetRegistry,
+  promptCompiler,
+  stateManager,
+  writersRoom,
+  dpPitch,
+  rerollService,
+  assetLocker
+);
 
-// Expose Resource: Current Active Story Graph
+// Expose Resources: Current Active Story Graph and V2 State
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
     resources: [
@@ -270,6 +501,13 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
         name: 'nogyaan Story Graph',
         description:
           'Authoritative state machine containing locked decisions, screenplay treatment, assets, and shot list.',
+        mimeType: 'application/json'
+      },
+      {
+        uri: 'nogyaan://v2/state',
+        name: 'nogyaan V2 State',
+        description:
+          'V2 State Manager (nogyaan-state.json) containing global medium, asset bible, scenes, and shots.',
         mimeType: 'application/json'
       }
     ]
@@ -292,6 +530,23 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       ]
     };
   }
+
+  if (
+    request.params.uri === 'nogyaan://v2/state' ||
+    request.params.uri.endsWith('://v2/state')
+  ) {
+    const v2State = stateManager.getState();
+    return {
+      contents: [
+        {
+          uri: request.params.uri,
+          mimeType: 'application/json',
+          text: JSON.stringify(v2State, null, 2)
+        }
+      ]
+    };
+  }
+
   throw new Error(`Resource not found: ${request.params.uri}`);
 });
 

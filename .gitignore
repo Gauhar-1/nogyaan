@@ -10,6 +10,7 @@ dist/
 # Local State
 .nogyaan/
 .nogyaan-*/
+nogyaan-state.json
 .noslop/
 .noslop-*/
 .ad-director/

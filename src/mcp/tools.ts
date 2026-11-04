@@ -7,13 +7,34 @@ import open from 'open';
 import { PresetRegistryService } from '../services/preset-registry.service.js';
 import { PromptCompilerService } from '../services/prompt-compiler.service.js';
 import { SessionDagService } from '../services/session-dag.service.js';
+import { StateManager } from '../v2/state-manager.js';
+import { WritersRoomService } from '../v2/writers-room.service.js';
+import { AssetLockerService } from '../v2/asset-locker.service.js';
+import { DpPitchService } from '../v2/dp-pitch.service.js';
+import { RerollService } from '../v2/reroll.service.js';
+import {
+  AnyLockedScriptSchema,
+  AnyLockedShotSchema,
+  Medium
+} from '../v2/types.js';
 
 export function registerMcpTools(
   server: Server,
   sessionService: SessionDagService,
   presetRegistry: PresetRegistryService,
-  promptCompiler: PromptCompilerService
+  promptCompiler: PromptCompilerService,
+  stateManagerInput?: StateManager,
+  writersRoomInput?: WritersRoomService,
+  dpPitchInput?: DpPitchService,
+  rerollServiceInput?: RerollService,
+  assetLockerInput?: AssetLockerService
 ): void {
+  const stateManager = stateManagerInput || new StateManager();
+  const writersRoom = writersRoomInput || new WritersRoomService(stateManager);
+  const assetLocker = assetLockerInput || new AssetLockerService(stateManager);
+  const dpPitch = dpPitchInput || new DpPitchService(stateManager);
+  const rerollService = rerollServiceInput || new RerollService(stateManager);
+
   const presetIds = presetRegistry.getPresetIds();
 
   // Handler for listing tools
@@ -298,6 +319,154 @@ export function registerMcpTools(
             },
             required: ['shots']
           }
+        },
+        {
+          name: 'pitch_script_options',
+          description:
+            'Phase 1 Writer\'s Room: JIT context-sliced narrative branching. Passes ONLY core premise and Scene N-1 locked narrative (zero camera data, zero assets). Generates exactly 3 minified ScriptPitch options (Heartfelt, Viral, Offbeat).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scene_id: {
+                type: 'string',
+                description: 'Scene ID to pitch script options for (e.g. "SCENE_01")'
+              },
+              user_guidance: {
+                type: 'string',
+                description: 'Optional directorial steering or thematic guidance'
+              }
+            },
+            required: ['scene_id']
+          }
+        },
+        {
+          name: 'lock_script_option',
+          description:
+            'Locks a chosen ScriptPitch or ScriptOption into the local nogyaan-state.json for the specified scene.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scene_id: {
+                type: 'string',
+                description: 'Target scene ID (e.g. "SCENE_01")'
+              },
+              script: {
+                type: 'object',
+                description: 'The chosen ScriptPitch object (id, style, txt) or ScriptOption object'
+              },
+              option_id: {
+                type: 'string',
+                description: 'Optional option_id if selecting from pitched options'
+              }
+            },
+            required: ['scene_id']
+          }
+        },
+        {
+          name: 'extract_active_assets',
+          description:
+            'Phase 2 Asset Locker: Analyzes locked 4-scene narrative to identify required cast, backgrounds, and products, returning an AssetBible and tagging each scene with active_refs (e.g., ["@CHAR_01", "@BG_02"]) to prevent passing unused characters into downstream DP shots.',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'pitch_shot_options',
+          description:
+            'Phase 3 DP Suite / Shot Compiler: Serialized shot-by-shot iteration. Passes ONLY Scene N narrative txt, Filtered Asset Bible (Scene N active_refs only), and Shot X-1 preceding state. Returns exactly 3 ShotPitch options (Auteur, Kinetic, Theatrical) with style-agnostic prmpt.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scene_id: {
+                type: 'string',
+                description: 'Scene ID (e.g. "SCENE_01")'
+              },
+              shot_id: {
+                type: 'string',
+                description: 'Shot identifier (e.g. "SHOT_01")'
+              }
+            },
+            required: ['scene_id', 'shot_id']
+          }
+        },
+        {
+          name: 'lock_shot_option',
+          description:
+            'Locks a chosen ShotPitch or ShotOption into the local nogyaan-state.json for the specified scene and shot.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scene_id: {
+                type: 'string',
+                description: 'Scene ID'
+              },
+              shot_id: {
+                type: 'string',
+                description: 'Shot identifier (e.g. "SHOT_01")'
+              },
+              shot: {
+                type: 'object',
+                description: 'The chosen ShotPitch object (id, style, txt, prmpt) or ShotOption'
+              }
+            },
+            required: ['scene_id', 'shot_id', 'shot']
+          }
+        },
+        {
+          name: 'reroll_node',
+          description:
+            'Targeted Re-Roll: Modifies ONLY an isolated node (scene or shot ID) in nogyaan-state.json based on specific user feedback, preserving all other locked scenes and shots with zero token burn.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              node_id: {
+                type: 'string',
+                description: 'Target node identifier (scene_id like "SCENE_01", shot_id like "SHOT_01", or "SCENE_01:SHOT_01")'
+              },
+              user_feedback: {
+                type: 'string',
+                description: 'Targeted directorial refinement feedback'
+              }
+            },
+            required: ['node_id', 'user_feedback']
+          }
+        },
+        {
+          name: 'get_nogyaan_state',
+          description:
+            'Returns the full current nogyaan-state.json state machine (global_medium, assets, and scenes with locked scripts and shots).',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'update_asset_bible',
+          description:
+            'Updates characters, backgrounds, hero product, and global_medium in nogyaan-state.json.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              characters: {
+                type: 'object',
+                description: 'Map of character ID to description (e.g. {"CHAR_01": "Sharma ji, 50s..."})'
+              },
+              backgrounds: {
+                type: 'object',
+                description: 'Map of background ID to description (e.g. {"BG_01": "Living room..."})'
+              },
+              product: {
+                type: 'string',
+                description: 'Hero product description'
+              },
+              global_medium: {
+                type: 'string',
+                enum: ['Live-Action Cinematic', '2D Anime', '3D Pixar Style'],
+                description: 'Global rendering medium'
+              }
+            }
+          }
         }
       ]
     };
@@ -513,6 +682,219 @@ export function registerMcpTools(
 
         return {
           content: [{ type: 'text', text: JSON.stringify(outputData, null, 2) }]
+        };
+      }
+
+      if (name === 'pitch_script_options') {
+        const options = await writersRoom.pitchScriptOptions({
+          scene_id: input.scene_id,
+          user_guidance: input.user_guidance
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  scene_id: input.scene_id,
+                  pitches: options,
+                  _systemDirective: {
+                    instruction:
+                      'Present these 3 distinct narrative paths to the user (Heartfelt, Viral, Offbeat). Once selected, call "lock_script_option".',
+                    endingRule: "End response with: 'Select Option A, B, or C or request guidance.'"
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+
+      if (name === 'lock_script_option') {
+        let scriptToLock = input.script || input.pitch;
+        if (!scriptToLock && (input.option_id || input.id)) {
+          const searchId = input.option_id || input.id;
+          const existingScene = stateManager.getScene(input.scene_id);
+          const lScript: any = existingScene?.locked_script;
+          if (existingScene && lScript && (lScript.option_id === searchId || lScript.id === searchId)) {
+            scriptToLock = existingScene.locked_script;
+          }
+        }
+        if (!scriptToLock) {
+          throw new Error('Script object is required to lock script option.');
+        }
+        const updatedState = stateManager.lockScript(input.scene_id, scriptToLock);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: `Script option locked for ${input.scene_id}.`,
+                  scene_id: input.scene_id,
+                  locked_script: scriptToLock,
+                  state: updatedState,
+                  _systemDirective: {
+                    instruction:
+                      updatedState.scenes.length >= 4 && updatedState.scenes.every((s) => s.locked_script)
+                        ? 'All 4 scenes locked! Trigger "extract_active_assets" to tag scene-level assets before moving to the DP Suite.'
+                        : `Script for ${input.scene_id} is locked. Proceed to next scene or call extract_active_assets when all 4 scenes are locked.`
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+
+      if (name === 'extract_active_assets') {
+        const result = await assetLocker.extractActiveAssets();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: 'Asset Bible extracted and active_refs tagged for all scenes.',
+                  extraction: result.extraction,
+                  state: result.state,
+                  _systemDirective: {
+                    instruction:
+                      'Active asset references tagged across all scenes. Now call "pitch_shot_options" for Scene 1 Shot 1.'
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+
+      if (name === 'pitch_shot_options') {
+        const options = await dpPitch.pitchShotOptions({
+          scene_id: input.scene_id,
+          shot_id: input.shot_id
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  scene_id: input.scene_id,
+                  shot_id: input.shot_id,
+                  pitches: options,
+                  _systemDirective: {
+                    instruction:
+                      'Present these 3 DP treatments to the user (Auteur, Kinetic, Theatrical). Once selected, call "lock_shot_option".',
+                    endingRule: "End response with: 'Select Treatment A, B, or C or request targeted camera adjustments.'"
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+
+      if (name === 'lock_shot_option') {
+        const shotToLock = input.shot || input.pitch;
+        if (!shotToLock) {
+          throw new Error('Shot object is required to lock shot option.');
+        }
+        const updatedState = stateManager.lockShot(input.scene_id, input.shot_id, shotToLock);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: `Shot option locked for ${input.scene_id} -> ${input.shot_id}.`,
+                  scene_id: input.scene_id,
+                  shot_id: input.shot_id,
+                  locked_shot: shotToLock,
+                  state: updatedState
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+
+      if (name === 'reroll_node') {
+        const result = await rerollService.rerollNode({
+          node_id: input.node_id,
+          user_feedback: input.user_feedback
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: `Targeted re-roll applied to node "${input.node_id}".`,
+                  result
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+
+      if (name === 'get_nogyaan_state') {
+        const state = stateManager.getState();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(state, null, 2)
+            }
+          ]
+        };
+      }
+
+      if (name === 'update_asset_bible') {
+        const currentState = stateManager.getState();
+        const updatedAssets = {
+          characters: input.characters !== undefined ? input.characters : currentState.assets.characters,
+          backgrounds: input.backgrounds !== undefined ? input.backgrounds : currentState.assets.backgrounds,
+          product: input.product !== undefined ? input.product : currentState.assets.product
+        };
+        stateManager.updateAssetBible(updatedAssets);
+        if (input.global_medium) {
+          stateManager.updateGlobalMedium(input.global_medium as Medium);
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: 'AssetBible & Medium updated.',
+                  state: stateManager.getState()
+                },
+                null,
+                2
+              )
+            }
+          ]
         };
       }
 
