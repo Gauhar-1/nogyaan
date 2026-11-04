@@ -83,6 +83,7 @@ export class StateManager {
     return {
       project_id: 'proj-default',
       core_premise: 'Authentic high-conversion commercial',
+      global_director_notes: '',
       global_medium: 'Live-Action Cinematic',
       assets: {
         characters: {},
@@ -156,6 +157,7 @@ export class StateManager {
   public initProject(params: {
     project_id?: string;
     core_premise?: string;
+    global_director_notes?: string;
     global_medium?: Medium;
     assets?: AssetBible;
     scenes?: Scene[];
@@ -163,6 +165,7 @@ export class StateManager {
     const newState: NogyaanState = {
       project_id: params.project_id || `proj-${Date.now()}`,
       core_premise: params.core_premise || 'Authentic high-conversion commercial',
+      global_director_notes: params.global_director_notes || '',
       global_medium: params.global_medium || 'Live-Action Cinematic',
       assets: params.assets || {
         characters: {},
@@ -182,6 +185,16 @@ export class StateManager {
 
   public getCorePremise(): string {
     return this.state.core_premise || 'Authentic video commercial';
+  }
+
+  public setGlobalDirectorNotes(notes: string): NogyaanState {
+    this.state.global_director_notes = notes;
+    this.saveToFile();
+    return this.getState();
+  }
+
+  public getGlobalDirectorNotes(): string {
+    return this.state.global_director_notes || '';
   }
 
   public updateGlobalMedium(medium: Medium): NogyaanState {
@@ -209,18 +222,27 @@ export class StateManager {
         scene_id,
         locked_script: validatedScript,
         active_refs: [],
+        spatial_memory: [],
         shots: {}
       };
       this.state.scenes.push(scene);
     } else {
       scene.locked_script = validatedScript;
+      if (!scene.spatial_memory) {
+        scene.spatial_memory = [];
+      }
     }
 
     this.saveToFile();
     return this.getState();
   }
 
-  public lockShot(scene_id: string, shot_id: string, shot: LockedShot): NogyaanState {
+  public lockShot(
+    scene_id: string,
+    shot_id: string,
+    shot: LockedShot,
+    explicitSpatialFacts?: string[]
+  ): NogyaanState {
     const validatedShot = AnyLockedShotSchema.parse(shot);
     let scene = this.state.scenes.find((s) => s.scene_id === scene_id);
 
@@ -229,6 +251,7 @@ export class StateManager {
         scene_id,
         locked_script: null,
         active_refs: [],
+        spatial_memory: [],
         shots: {}
       };
       this.state.scenes.push(scene);
@@ -238,12 +261,128 @@ export class StateManager {
       scene.shots = {};
     }
 
+    if (!scene.spatial_memory) {
+      scene.spatial_memory = [];
+    }
+
     scene.shots[shot_id] = {
       locked_shot: validatedShot
     };
 
+    // The Spatial Mutation: Silently append or update the spatial_memory array
+    // with any new physical positions established in that shot.
+    const newPositions = this.extractSpatialFactsFromShot(validatedShot, explicitSpatialFacts);
+    for (const pos of newPositions) {
+      this.updateOrAppendSpatialFact(scene.spatial_memory, pos);
+    }
+
     this.saveToFile();
     return this.getState();
+  }
+
+  public appendSpatialMemory(scene_id: string, facts: string[]): NogyaanState {
+    const scene = this.state.scenes.find((s) => s.scene_id === scene_id);
+    if (scene) {
+      if (!scene.spatial_memory) scene.spatial_memory = [];
+      for (const fact of facts) {
+        this.updateOrAppendSpatialFact(scene.spatial_memory, fact);
+      }
+      this.saveToFile();
+    }
+    return this.getState();
+  }
+
+  /**
+   * Extracts physical room geometry, character coordinates, and object positions established in a shot.
+   */
+  public extractSpatialFactsFromShot(
+    shot: LockedShot,
+    explicitFacts?: string[]
+  ): string[] {
+    const results: string[] = [];
+
+    // 1. Explicit facts if provided
+    if (explicitFacts && Array.isArray(explicitFacts)) {
+      results.push(...explicitFacts);
+    }
+
+    // 2. Shot object spatial annotations if present
+    const anyShot = shot as any;
+    if (Array.isArray(anyShot.spatial_facts)) {
+      results.push(...anyShot.spatial_facts);
+    }
+    if (Array.isArray(anyShot.spatial_positions)) {
+      results.push(...anyShot.spatial_positions);
+    }
+
+    // 3. Automated heuristic extraction from shot visual intent (txt) and prompt (prmpt / ai_payload)
+    const textsToScan: string[] = [];
+    if (anyShot.txt) textsToScan.push(anyShot.txt);
+    if (anyShot.visual_intent) textsToScan.push(anyShot.visual_intent);
+    if (anyShot.prmpt) textsToScan.push(anyShot.prmpt);
+    if (anyShot.ai_payload) textsToScan.push(anyShot.ai_payload);
+
+    const spatialIndicators = [
+      /\b(?:is\s+|stands\s+|seated\s+|sitting\s+|lying\s+|placed\s+|positioned\s+|centered\s+|resting\s+|leaning\s+)(?:at|on|in|beside|near|by|behind|in front of|under|against|inside|opposite)\b/i,
+      /\b(?:at the table|on the table|at table \d+|by the window|near the door|on the desk|in the kitchen|in front of the camera)\b/i,
+      /\b(?:dead-center|geometric symmetry|centered inside)\b/i
+    ];
+
+    for (const text of textsToScan) {
+      const clauses = text
+        .split(/(?<=[.!?])\s+|\s*,\s*(?=(?:@?[A-Z][a-zA-Z0-9_-]*|\b(?:phone|laptop|cup|glass|bottle|door|table|chair|camera)\b)\s+(?:is|stands|seated|sitting|placed|lies|leaning|positioned|rests))/i)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 5);
+
+      for (const clause of clauses) {
+        if (
+          /\b(?:\d+mm|f\/\d|anamorphic|shutter|iso|fps|aspect ratio|chiaroscuro|key wrap)\b/i.test(
+            clause
+          ) &&
+          !/\b(?:seated|sitting|stands|placed|on table|at table)\b/i.test(clause)
+        ) {
+          continue;
+        }
+
+        const matchesSpatial = spatialIndicators.some((regex) => regex.test(clause));
+        if (matchesSpatial) {
+          const cleaned = clause
+            .replace(/^(?:Also|And|Then|Next|Meanwhile)\s+/i, '')
+            .replace(/[.]+$/, '')
+            .trim();
+          if (cleaned.length > 8 && cleaned.length < 120 && !results.includes(cleaned)) {
+            results.push(cleaned);
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Rolling spatial memory updater: updates position if subject already exists, or appends.
+   */
+  private updateOrAppendSpatialFact(memory: string[], newFact: string): void {
+    const trimmed = newFact.trim();
+    if (!trimmed) return;
+
+    const subjectMatch = trimmed.match(/^(@?[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?)/);
+    const subject = subjectMatch ? subjectMatch[1].toLowerCase() : null;
+
+    if (subject) {
+      const existingIdx = memory.findIndex((item) =>
+        item.toLowerCase().startsWith(subject)
+      );
+      if (existingIdx !== -1) {
+        memory[existingIdx] = trimmed;
+        return;
+      }
+    }
+
+    if (!memory.includes(trimmed)) {
+      memory.push(trimmed);
+    }
   }
 
   public tagSceneAssets(scene_id: string, active_refs: string[]): NogyaanState {
@@ -326,8 +465,9 @@ export class StateManager {
    * Passes ONLY:
    * 1. The locked narrative txt for Scene N.
    * 2. The Filtered Asset Bible (only characters/backgrounds tagged in Scene N's active_refs).
-   * 3. The state of Shot X-1 (the immediately preceding locked shot in Scene N).
-   * Never passes the rest of the script, unused assets, or shots from other scenes.
+   * 3. The current scene's spatial_memory array (room geometry, physical coordinates).
+   * 4. Persistent global_director_notes (persistent cinematic rules).
+   * Never passes Shot X-1 state, unused assets, or shots from other scenes.
    */
   public getShotContextSlice(
     scene_id: string,
@@ -335,7 +475,8 @@ export class StateManager {
   ): {
     scene_narrative: string;
     filtered_assets: AssetBible;
-    previous_shot: LockedShot | null;
+    spatial_memory: string[];
+    global_director_notes: string;
   } {
     const scene = this.state.scenes.find((s) => s.scene_id === scene_id);
     const sc: any = scene?.locked_script;
@@ -405,24 +546,11 @@ export class StateManager {
       product: this.state.assets.product || ''
     };
 
-    // Shot X-1: spatial continuity from preceding shot in this scene
-    let previous_shot: LockedShot | null = null;
-    if (scene && scene.shots) {
-      const shotKeys = Object.keys(scene.shots);
-      const currIdx = shotKeys.indexOf(shot_id);
-      if (currIdx > 0) {
-        previous_shot = scene.shots[shotKeys[currIdx - 1]]?.locked_shot || null;
-      } else if (currIdx === -1 && shotKeys.length > 0) {
-        // shot_id has not yet been locked in state (e.g. pitching SHOT_02 when SHOT_01 is locked)
-        const lastKey = shotKeys[shotKeys.length - 1];
-        previous_shot = scene.shots[lastKey]?.locked_shot || null;
-      }
-    }
-
     return {
       scene_narrative,
       filtered_assets,
-      previous_shot
+      spatial_memory: scene?.spatial_memory || [],
+      global_director_notes: this.state.global_director_notes || ''
     };
   }
 

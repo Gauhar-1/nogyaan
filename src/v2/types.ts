@@ -49,13 +49,15 @@ export interface ShotPitch {
   style: DpPitchStyle;
   txt: string; // Beautiful, human-readable visual intent
   prmpt: string; // Dense AI payload: Ref tags + Lens/Lighting only
+  spatial_facts?: string[]; // Optional spatial positions established in this shot
 }
 
 export const ShotPitchSchema = z.object({
   id: z.string().min(1),
   style: z.enum(['Auteur', 'Kinetic', 'Theatrical']),
   txt: z.string().min(1),
-  prmpt: z.string().min(1)
+  prmpt: z.string().min(1),
+  spatial_facts: z.array(z.string()).optional()
 });
 
 // Backward-compatible verbose options
@@ -111,6 +113,7 @@ export interface Scene {
   scene_id: string;
   locked_script: LockedScript | null;
   active_refs?: string[]; // e.g., ["@CHAR_01", "@BG_02"]
+  spatial_memory?: string[]; // Compressed rolling array of physical facts (e.g., ["Sharma is seated at table 4", "Phone is on table"])
   shots: Record<string, { locked_shot: LockedShot | null }>; // Sequential spatial memory
 }
 
@@ -118,6 +121,7 @@ export const SceneSchema = z.object({
   scene_id: z.string().min(1),
   locked_script: AnyLockedScriptSchema.nullable(),
   active_refs: z.array(z.string()).default([]),
+  spatial_memory: z.array(z.string()).default([]),
   shots: z.record(
     z.object({
       locked_shot: AnyLockedShotSchema.nullable()
@@ -128,6 +132,7 @@ export const SceneSchema = z.object({
 export interface NogyaanState {
   project_id: string;
   core_premise?: string;
+  global_director_notes?: string; // Persistent cinematic rules (e.g., "Scene 4 must visually mirror Scene 1")
   global_medium: Medium;
   assets: AssetBible;
   scenes: Scene[];
@@ -136,6 +141,7 @@ export interface NogyaanState {
 export const NogyaanStateSchema = z.object({
   project_id: z.string().min(1),
   core_premise: z.string().optional(),
+  global_director_notes: z.string().default(''),
   global_medium: MediumSchema,
   assets: AssetBibleSchema,
   scenes: z.array(SceneSchema)

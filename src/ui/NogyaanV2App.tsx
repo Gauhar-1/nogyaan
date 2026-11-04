@@ -7,13 +7,15 @@ const MEDIUM_OPTIONS: Medium[] = [
   '3D Pixar Style'
 ];
 
-export const NogyaanV2App: React.FC = () => {
+export const DirectorsTreatmentApp: React.FC = () => {
   const [state, setState] = useState<NogyaanState | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [copiedShotId, setCopiedShotId] = useState<string | null>(null);
   const [reRollingNodeId, setReRollingNodeId] = useState<string | null>(null);
   const [isExtractingAssets, setIsExtractingAssets] = useState<boolean>(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [directorNotes, setDirectorNotes] = useState<string>('');
+  const [isSavingNotes, setIsSavingNotes] = useState<boolean>(false);
   const [collapsedPayloads, setCollapsedPayloads] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -22,8 +24,11 @@ export const NogyaanV2App: React.FC = () => {
       .then((res) => res.json())
       .then((data: NogyaanState) => {
         setState(data);
+        if (data.global_director_notes !== undefined) {
+          setDirectorNotes(data.global_director_notes);
+        }
       })
-      .catch((err) => console.error('Failed to fetch initial v2 state:', err));
+      .catch((err) => console.error('Failed to fetch initial state:', err));
 
     // 2. Real-Time Server-Sent Events (SSE) Stream
     const eventSource = new EventSource('/api/v2/events');
@@ -37,6 +42,9 @@ export const NogyaanV2App: React.FC = () => {
         const payload = JSON.parse(event.data);
         if (payload.type === 'INIT' || payload.type === 'STATE_UPDATED') {
           setState(payload.state);
+          if (payload.state?.global_director_notes !== undefined) {
+            setDirectorNotes(payload.state.global_director_notes);
+          }
         }
       } catch (err) {
         console.error('Failed to parse SSE event:', err);
@@ -63,6 +71,23 @@ export const NogyaanV2App: React.FC = () => {
       if (data.state) setState(data.state);
     } catch (err) {
       console.error('Failed to update medium:', err);
+    }
+  };
+
+  const handleSaveDirectorNotes = async () => {
+    setIsSavingNotes(true);
+    try {
+      const res = await fetch('/api/v2/director-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: directorNotes })
+      });
+      const data = await res.json();
+      if (data.state) setState(data.state);
+    } catch (err) {
+      console.error('Failed to update director notes:', err);
+    } finally {
+      setIsSavingNotes(false);
     }
   };
 
@@ -135,20 +160,20 @@ export const NogyaanV2App: React.FC = () => {
       <div className="flex items-center justify-center min-h-screen bg-slate-950 text-slate-400 font-sans">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-medium">Connecting to nogyaan V2 Engine...</p>
+          <p className="text-sm font-medium">Connecting to nogyaan Treatment Engine...</p>
         </div>
       </div>
     );
   }
 
-  const { assets, global_medium, scenes } = state;
+  const { assets, global_medium, scenes, core_premise } = state;
   const allScenesLocked = scenes.length >= 4 && scenes.every((s) => s.locked_script);
   const hasActiveRefs = scenes.some((s) => s.active_refs && s.active_refs.length > 0);
 
   return (
     <div className="flex h-screen w-full bg-slate-950 text-slate-100 font-sans overflow-hidden">
       {/* ==================================================================== */}
-      {/* 1. STICKY SIDEBAR: ASSET BIBLE (25% Width)                           */}
+      {/* 1. STICKY SIDEBAR: ASSET BIBLE & PERSISTENT RULES (25% Width)       */}
       {/* ==================================================================== */}
       <aside className="w-1/4 min-w-[300px] max-w-[380px] h-screen bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0 z-20">
         {/* Sidebar Header */}
@@ -197,6 +222,29 @@ export const NogyaanV2App: React.FC = () => {
           <p className="mt-1.5 text-[11px] text-slate-500">
             Prepended dynamically to DP prompts upon copy.
           </p>
+        </div>
+
+        {/* Persistent Cinematic Rules (Global Director Notes) */}
+        <div className="p-5 border-b border-slate-800 bg-slate-900/30">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-semibold text-amber-400 uppercase tracking-wider font-mono">
+              Persistent Cinematic Rules
+            </label>
+            <button
+              onClick={handleSaveDirectorNotes}
+              disabled={isSavingNotes}
+              className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors"
+            >
+              {isSavingNotes ? 'Saving...' : 'Save Rules'}
+            </button>
+          </div>
+          <textarea
+            value={directorNotes}
+            onChange={(e) => setDirectorNotes(e.target.value)}
+            placeholder="e.g., Scene 4 must visually mirror Scene 1; keep lighting warm and nostalgic across all scenes..."
+            rows={2}
+            className="w-full bg-slate-950 border border-slate-800 rounded-md p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-sans resize-none"
+          />
         </div>
 
         {/* Phase 2: Active Asset Extraction Action Banner */}
@@ -295,10 +343,10 @@ export const NogyaanV2App: React.FC = () => {
         <header className="flex items-center justify-between border-b border-slate-800 pb-5">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-100 font-sans">
-              Director's Storyboard & DP Pitch
+              The Director's Treatment
             </h1>
             <p className="text-sm text-slate-400 mt-1 font-sans">
-              Just-In-Time Context Slicing: Writer's Room, Asset Locker, and DP Suite.
+              Single unified directorial vision: Writer's Room, Asset Locker, and DP Suite.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -372,7 +420,7 @@ const SceneSection: React.FC<SceneSectionProps> = ({
   onCopyPrompt,
   onToggleCollapse
 }) => {
-  const { scene_id, locked_script, active_refs, shots } = scene;
+  const { scene_id, locked_script, active_refs, spatial_memory, shots } = scene;
   const shotEntries = Object.entries(shots || {});
 
   const scriptTxt = (locked_script as any)?.txt || (locked_script as any)?.narrative_block || '';
@@ -421,7 +469,7 @@ const SceneSection: React.FC<SceneSectionProps> = ({
 
           {/* Phase 2: Active Refs Tagging Badge Row */}
           {active_refs && active_refs.length > 0 && (
-            <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2">
+            <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2 mb-3">
               <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
                 Tagged Active Refs:
               </span>
@@ -432,6 +480,25 @@ const SceneSection: React.FC<SceneSectionProps> = ({
                     className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-300"
                   >
                     {ref}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Rolling Spatial Memory (Room Geometry) */}
+          {spatial_memory && spatial_memory.length > 0 && (
+            <div className="pt-3 border-t border-slate-800/80 flex flex-col gap-1.5 mb-3">
+              <span className="text-[11px] font-mono text-emerald-400 uppercase tracking-wider font-semibold">
+                Room Geometry (Spatial Memory):
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {spatial_memory.map((fact, idx) => (
+                  <span
+                    key={idx}
+                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"
+                  >
+                    📍 {fact}
                   </span>
                 ))}
               </div>
@@ -628,4 +695,5 @@ const ShotCard: React.FC<ShotCardProps> = ({
   );
 };
 
-export default NogyaanV2App;
+export const NogyaanV2App = DirectorsTreatmentApp;
+export default DirectorsTreatmentApp;

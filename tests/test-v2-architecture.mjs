@@ -153,10 +153,14 @@ try {
   console.log('  ✅ Phase 2 Asset Locker extracted AssetBible and tagged active_refs.');
 
   // ==========================================================================
-  // Test 5: Phase 3: The DP Suite (Serialized Shot Iteration & Filtered Asset Bible)
+  // Test 5: Phase 3: The DP Suite (Filtered Asset Bible, Spatial Memory & Director Notes)
   // ==========================================================================
-  console.log('\n🔹 Test 5: Phase 3 DP Suite (Filtered Asset Bible & Shot Serialization)');
+  console.log('\n🔹 Test 5: Phase 3 DP Suite (Filtered Assets, Spatial Memory & Director Notes)');
   const dpPitch = new DpPitchService(stateManager);
+
+  // Set persistent cinematic rules
+  const directorRule = 'Scene 4 must visually mirror Scene 1; maintain warm practical lighting';
+  stateManager.setGlobalDirectorNotes(directorRule);
 
   // Set explicit active_refs on Scene 2: CHAR_01 only, no CHAR_02
   stateManager.tagSceneAssets('SCENE_02', ['@CHAR_01', '@BG_02']);
@@ -167,7 +171,11 @@ try {
   // Verify filtered assets does NOT include CHAR_02
   assert(dpSlice.filtered_assets.characters['CHAR_01'], 'Filtered assets must include CHAR_01');
   assert(!dpSlice.filtered_assets.characters['CHAR_02'], 'Filtered assets must NOT include unused CHAR_02');
-  assert.equal(dpSlice.previous_shot, null, 'Shot 1 must not have preceding shot');
+  // Verify previous_shot is NOT in slice
+  assert.equal(dpSlice.previous_shot, undefined, 'Shot X-1 must NOT be passed in JIT payload');
+  // Verify spatial_memory and global_director_notes are present
+  assert(Array.isArray(dpSlice.spatial_memory), 'spatial_memory must be an array');
+  assert.equal(dpSlice.global_director_notes, directorRule, 'global_director_notes must be present in slice');
 
   // Pitch Shot 1
   const shotPitches = await dpPitch.pitchShotOptions({
@@ -191,15 +199,39 @@ try {
     assert(!lowerPrmpt.includes('pixar'), 'prmpt must be style-agnostic');
   }
 
-  // Lock Shot 1
-  stateManager.lockShot('SCENE_02', 'SHOT_01', shotPitches[0]);
+  // Lock Shot 1 with explicit and auto-extracted spatial facts (The Spatial Mutation)
+  stateManager.lockShot('SCENE_02', 'SHOT_01', shotPitches[0], [
+    'Sharma is seated at table 4',
+    'Phone is on table'
+  ]);
 
-  // Check Shot 2 slice receives Shot 1 for spatial continuity
+  // Verify Scene 2 spatial_memory on state
+  const sc2 = stateManager.getScene('SCENE_02');
+  assert(sc2.spatial_memory.includes('Sharma is seated at table 4'), 'Must record Sharma seated at table 4');
+  assert(sc2.spatial_memory.includes('Phone is on table'), 'Must record Phone on table');
+
+  // Check Shot 2 context slice receives spatial_memory and global_director_notes (NO previous_shot)
   const dpSlice2 = stateManager.getShotContextSlice('SCENE_02', 'SHOT_02');
-  assert(dpSlice2.previous_shot, 'Shot 2 must receive preceding Shot 1 for spatial continuity');
-  assert.equal(dpSlice2.previous_shot.id, shotPitches[0].id);
+  assert.equal(dpSlice2.previous_shot, undefined, 'Shot 2 must NOT receive previous_shot state');
+  assert.equal(dpSlice2.global_director_notes, directorRule);
+  assert(dpSlice2.spatial_memory.includes('Sharma is seated at table 4'), 'Shot 2 must receive rolling spatial memory');
+  assert(dpSlice2.spatial_memory.includes('Phone is on table'), 'Shot 2 must receive phone position');
 
-  console.log('  ✅ Phase 3 DP Suite enforces Filtered Asset Bible and Shot X-1 continuity.');
+  // Lock Shot 2 with positional movement to verify silent spatial update
+  stateManager.lockShot('SCENE_02', 'SHOT_02', {
+    id: 'B',
+    style: 'Kinetic',
+    txt: 'Sharma stands up from table 4 and walks to the kitchen counter.',
+    prmpt: '24mm lens, f/8, rapid tracking pace behind Sharma walking towards kitchen counter.'
+  });
+
+  const sc2Updated = stateManager.getScene('SCENE_02');
+  assert(
+    sc2Updated.spatial_memory.some((m) => m.toLowerCase().includes('sharma')),
+    'Spatial memory must preserve Sharma location'
+  );
+
+  console.log('  ✅ Phase 3 DP Suite enforces Filtered Asset Bible, Spatial Memory & Director Notes.');
 
   // ==========================================================================
   // Test 6: Phase 5: Targeted Re-Roll (Isolated Node Modification, Zero Token Burn)
@@ -240,6 +272,8 @@ try {
   assert.equal(validatedState.scenes.length, 4);
   assert.equal(validatedState.core_premise.includes('Craft coffee'), true);
   assert(validatedState.scenes[1].active_refs.includes('@CHAR_01'));
+  assert.equal(validatedState.global_director_notes, directorRule, 'Disk state must preserve global_director_notes');
+  assert(validatedState.scenes[1].spatial_memory.length > 0, 'Disk state must preserve spatial_memory array');
 
   console.log('  ✅ nogyaan-state.json on disk validates 100% against NogyaanStateSchema.');
 

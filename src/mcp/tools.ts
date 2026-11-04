@@ -408,9 +408,30 @@ export function registerMcpTools(
               shot: {
                 type: 'object',
                 description: 'The chosen ShotPitch object (id, style, txt, prmpt) or ShotOption'
+              },
+              spatial_facts: {
+                type: 'array',
+                items: { type: 'string' },
+                description:
+                  'Optional physical facts established in this shot (e.g. ["Sharma is seated at table 4", "Phone is on table"])'
               }
             },
             required: ['scene_id', 'shot_id', 'shot']
+          }
+        },
+        {
+          name: 'set_director_notes',
+          description:
+            'Sets persistent cinematic rules or directorial constraints in nogyaan-state.json (e.g., "Scene 4 must visually mirror Scene 1") that apply across all scenes.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              notes: {
+                type: 'string',
+                description: 'Directorial notes and persistent cinematic rules'
+              }
+            },
+            required: ['notes']
           }
         },
         {
@@ -464,6 +485,10 @@ export function registerMcpTools(
                 type: 'string',
                 enum: ['Live-Action Cinematic', '2D Anime', '3D Pixar Style'],
                 description: 'Global rendering medium'
+              },
+              global_director_notes: {
+                type: 'string',
+                description: 'Persistent cinematic rules applying across all scenes (e.g., "Scene 4 must visually mirror Scene 1")'
               }
             }
           }
@@ -812,7 +837,13 @@ export function registerMcpTools(
         if (!shotToLock) {
           throw new Error('Shot object is required to lock shot option.');
         }
-        const updatedState = stateManager.lockShot(input.scene_id, input.shot_id, shotToLock);
+        const spatialFacts = input.spatial_facts || input.spatial_memory_updates;
+        const updatedState = stateManager.lockShot(
+          input.scene_id,
+          input.shot_id,
+          shotToLock,
+          spatialFacts
+        );
         return {
           content: [
             {
@@ -820,10 +851,32 @@ export function registerMcpTools(
               text: JSON.stringify(
                 {
                   success: true,
-                  message: `Shot option locked for ${input.scene_id} -> ${input.shot_id}.`,
+                  message: `Shot option locked for ${input.scene_id} -> ${input.shot_id}. Spatial memory silently updated.`,
                   scene_id: input.scene_id,
                   shot_id: input.shot_id,
                   locked_shot: shotToLock,
+                  spatial_memory: updatedState.scenes.find((s) => s.scene_id === input.scene_id)?.spatial_memory || [],
+                  state: updatedState
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+
+      if (name === 'set_director_notes') {
+        const updatedState = stateManager.setGlobalDirectorNotes(input.notes);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: 'Global director notes updated.',
+                  global_director_notes: updatedState.global_director_notes,
                   state: updatedState
                 },
                 null,
@@ -880,6 +933,9 @@ export function registerMcpTools(
         if (input.global_medium) {
           stateManager.updateGlobalMedium(input.global_medium as Medium);
         }
+        if (input.global_director_notes !== undefined) {
+          stateManager.setGlobalDirectorNotes(input.global_director_notes);
+        }
         return {
           content: [
             {
@@ -887,7 +943,7 @@ export function registerMcpTools(
               text: JSON.stringify(
                 {
                   success: true,
-                  message: 'AssetBible & Medium updated.',
+                  message: 'AssetBible, Medium & Director Notes updated.',
                   state: stateManager.getState()
                 },
                 null,

@@ -324,7 +324,34 @@ function startStudioServer(port: number = 4321): void {
       parseJsonBody(req)
         .then((body) => {
           try {
-            const newState = stateManager.lockShot(body.scene_id, body.shot_id, body.shot);
+            const spatialFacts = body.spatial_facts || body.spatial_memory_updates;
+            const newState = stateManager.lockShot(
+              body.scene_id,
+              body.shot_id,
+              body.shot,
+              spatialFacts
+            );
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, state: newState }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 8.1. Update Global Director Notes (POST /api/v2/director-notes)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/director-notes') {
+      parseJsonBody<{ notes?: string; global_director_notes?: string }>(req)
+        .then((body) => {
+          try {
+            const notes = body.notes !== undefined ? body.notes : (body.global_director_notes || '');
+            const newState = stateManager.setGlobalDirectorNotes(notes);
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ success: true, state: newState }));
           } catch (err: any) {

@@ -1,4 +1,4 @@
-import { AssetBible, LockedShot, NogyaanState, ShotPitch, ShotPitchSchema } from './types.js';
+import { AssetBible, NogyaanState, ShotPitch, ShotPitchSchema } from './types.js';
 import { DP_SYSTEM_PROMPT } from './prompts.js';
 import { StateManager } from './state-manager.js';
 
@@ -18,7 +18,7 @@ export class DpPitchService {
   /**
    * Generates exactly 3 ShotPitch choices using strict Shot-by-Shot serialization.
    * Context Slice: ONLY Scene N narrative txt, Filtered Asset Bible (Scene N active_refs),
-   * and Shot X-1 state.
+   * current scene's spatial_memory array, and global_director_notes.
    */
   public async pitchShotOptions(input: PitchShotInput): Promise<ShotPitch[]> {
     const sm = input.state ? new StateManager() : this.stateManager;
@@ -26,7 +26,7 @@ export class DpPitchService {
       sm.setState(input.state);
     }
 
-    // Just-In-Time Context Slice: ONLY Scene N txt, Filtered Assets, and Shot X-1
+    // Just-In-Time Context Slice: ONLY Scene N txt, Filtered Assets, spatial_memory, and global_director_notes
     const contextSlice = sm.getShotContextSlice(input.scene_id, input.shot_id);
 
     let options: ShotPitch[] | null = null;
@@ -63,7 +63,8 @@ export class DpPitchService {
     slice: {
       scene_narrative: string;
       filtered_assets: AssetBible;
-      previous_shot: LockedShot | null;
+      spatial_memory: string[];
+      global_director_notes: string;
     }
   ): ShotPitch[] {
     const charKeys = Object.keys(slice.filtered_assets.characters || {});
@@ -72,15 +73,20 @@ export class DpPitchService {
     const bgRef = bgKeys[0] ? `@${bgKeys[0]}` : '@BG_01';
     const prodRef = '@PROD_01';
 
-    const prevNote = slice.previous_shot
-      ? `Picking up spatial orientation from preceding shot: continuity hold.`
-      : `Establishing master spatial coordinates in ${bgRef}.`;
+    const spatialNote =
+      slice.spatial_memory && slice.spatial_memory.length > 0
+        ? `Preserving room geometry (${slice.spatial_memory.slice(-2).join('; ')}).`
+        : `Establishing room geometry inside ${bgRef}.`;
+
+    const directorRule = slice.global_director_notes
+      ? ` Note: ${slice.global_director_notes}.`
+      : '';
 
     // 1. Auteur (Intimate Auteur)
     const optA: ShotPitch = {
       id: 'A',
       style: 'Auteur',
-      txt: `${prevNote} The camera glides with reverence into ${charRef1}'s emotional space. Soft wrapping chiaroscuro light sculpts their contemplative profile against the velvety depths of ${bgRef}, pulling the viewer into the raw truth of the moment.`,
+      txt: `${spatialNote}${directorRule} The camera glides with reverence into ${charRef1}'s emotional space. Soft wrapping chiaroscuro light sculpts their contemplative profile against the velvety depths of ${bgRef}, pulling the viewer into the raw truth of the moment.`,
       prmpt: `85mm lens, f/1.4 shallow depth of field, slow fluid-head push-in, chiaroscuro lighting with crushed shadows and warm key wrap. Tight medium close-up of ${charRef1} in ${bgRef}. Micro-eyebrow twitch, steady breath. Blurred background textures. Single continuous take, zero cuts.`
     };
 
@@ -88,7 +94,7 @@ export class DpPitchService {
     const optB: ShotPitch = {
       id: 'B',
       style: 'Kinetic',
-      txt: `${prevNote} Raw, immediate energy throws the audience directly into the chaos. The wide glass trembles with spontaneous physical motion, capturing the grit and kinetic friction as ${charRef1} moves briskly through ${bgRef}.`,
+      txt: `${spatialNote}${directorRule} Raw, immediate energy throws the audience directly into the chaos. The wide glass trembles with spontaneous physical motion, capturing the grit and kinetic friction as ${charRef1} moves briskly through ${bgRef}.`,
       prmpt: `24mm ultra-wide lens, f/8 deep focus, aggressive handheld camera jitter, harsh directional side lighting with high-contrast specular highlights. Low-angle tracking shot pacing rapidly alongside ${charRef1} inside ${bgRef}. Rapid momentum, snap pan to ${prodRef}. Deep focus. Zero cuts.`
     };
 
@@ -96,7 +102,7 @@ export class DpPitchService {
     const optC: ShotPitch = {
       id: 'C',
       style: 'Theatrical',
-      txt: `${prevNote} An obsessive exercise in architectural symmetry. ${charRef1} is positioned dead-center like a Wes Anderson dollhouse tableau, moving with dry clockwork precision under saturated, crisp practical lighting.`,
+      txt: `${spatialNote}${directorRule} An obsessive exercise in architectural symmetry. ${charRef1} is positioned dead-center like a Wes Anderson dollhouse tableau, moving with dry clockwork precision under saturated, crisp practical lighting.`,
       prmpt: `50mm prime lens, f/4 aperture, bolted heavy tripod, centered geometric symmetry, high-key even practical lighting with flat shadows. Locked static medium shot of ${charRef1} centered inside ${bgRef}. Synchronized deadpan head turn. Architectural alignment. Single continuous hold.`
     };
 
@@ -109,13 +115,15 @@ export class DpPitchService {
     slice: {
       scene_narrative: string;
       filtered_assets: AssetBible;
-      previous_shot: LockedShot | null;
+      spatial_memory: string[];
+      global_director_notes: string;
     }
   ): Promise<ShotPitch[] | null> {
     const userPrompt = `Target: ${scene_id} -> ${shot_id}
 Locked Scene Narrative (txt): ${slice.scene_narrative}
 Filtered Asset Bible (Scene Active Refs Only): ${JSON.stringify(slice.filtered_assets)}
-Preceding Shot X-1 (Spatial Continuity): ${slice.previous_shot ? JSON.stringify(slice.previous_shot) : 'None (Shot 1 opener)'}
+Spatial Memory (Room Geometry): ${JSON.stringify(slice.spatial_memory)}
+Global Director Notes: ${slice.global_director_notes || 'None'}
 
 Generate exactly 3 ShotPitch options in raw minified JSON:
 [
