@@ -112,8 +112,8 @@ node dist/cli.js doctor
 | **Rejected Ideas** | Stay in chat history forever; cause hallucinations by Scene 3. | **Physically deleted** from state file after every choice. |
 | **Scene Continuity** | Teleports characters between shots. | Enforces **Exit-Frame-to-Entry-Frame** physical bridges. |
 | **Voiceover vs. Lip-Sync** | Mixes narrator VO into video prompt (ruins actor mouth motion). | Strictly separates **On-Camera Lip-Sync** from **Post-Prod VO**. |
-| **Shot Compilation** | Dumps all scenes in one lazy batch with internal cuts. | Compiles **1 scene at a time** (single continuous lens & movement). |
-| **Output Format** | 2,000-word wall of Markdown text. | **2-Pane Split Web Workbench** (`localhost:4321`) + Dual Prompt Modes. |
+| **Shot Breakdown** | Dumps all scenes in one lazy batch or hallucinates whole scenes. | Compiles **1 shot at a time** via interactive DP pitches (Auteur, Kinetic, Theatrical), yielding to user per shot. |
+| **Output Format** | 2,000-word wall of Markdown text. | **The Director's Treatment** (`localhost:4321`) with Live SSE Sync & One-Click Diffusion Copy. |
 
 ---
 
@@ -126,7 +126,9 @@ node dist/cli.js doctor
 | `lock_core_theme` | `CORE_THEME` | `session_id`, `chosen_theme_id`, `theme_title`, `theme_premise` | Locks the overarching Core Campaign Premise (an abstract narrative concept, NOT a physical scene) and transitions stage to `SCENE_1_SETUP`. |
 | `branch_scene` | Narrative (`SCENE_1_SETUP` – `SCENE_4_CLIMAX`) | `session_id`, `action`, `scene_number`, `chosen_option_id`, `exit_frame_anchor`, `nextOptions` | Commits physical scene (`1`, `2`, `3`) or regenerates (`R`), wipes pruned branches, and enforces physical continuity bridges. |
 | `lock_assets` | `LOCK_ASSETS` (after Scene 4) | `session_id`, `characters` (`CHAR_01..N`), `environments` (`BG_01..N`), `product` (`PROD_01`) | Locks canonical visual asset references and generates Midjourney / Flux reference prompts. |
-| `compile_single_scene` | `COMPILE_SHOTS` (after Lock Assets) | `session_id`, `scene_number`, `kinetic_action_description`, `camera_spec`, `attached_asset_refs` | Compiles single-take camera physics, separates Post-Prod VO from Lip-Sync, and updates the Studio Workbench. |
+| `extract_active_assets` | Post-Script | None | Analyzes locked 4-scene narrative to extract the AssetBible and tag active refs (`@CHAR_01`, `@BG_01`, `@PROD_01`) per scene. |
+| `pitch_shot_options` | DP Suite | `scene_id`, `shot_id` | Pitches exactly 3 options (Auteur, Kinetic, Theatrical) for a single shot and completely HALTS execution to yield to the user. |
+| `lock_shot_option` | DP Suite | `scene_id`, `shot_id`, `shot`, `spatial_facts` | Locks selected shot option into state, silently updating rolling spatial room geometry. |
 
 ---
 
@@ -146,10 +148,10 @@ node dist/cli.js doctor
    ```
 
 3. **Lock continuity and assets**:
-   After Scene 4 Climax, Claude locks visual assets (`@CHAR_01`, `@BG_01`, `@PROD_01`).
+   After Scene 4 Climax, Claude extracts and locks visual assets (`@CHAR_01`, `@BG_01`, `@PROD_01`).
 
-4. **Compile scenes & review in Studio Workbench**:
-   Claude compiles each scene via `compile_single_scene` and automatically opens **`http://localhost:4321`** to inspect the narrative arc, generate reference PNGs, and copy AI video prompts.
+4. **Interactive DP Pitches & The Director's Treatment**:
+   Claude pitches 3 distinct optical treatments per shot via `pitch_shot_options` (Auteur, Kinetic, Theatrical), halts execution, and waits for user selection before locking via `lock_shot_option`. Review the unified Director's Treatment on **`http://localhost:4321`** with live SSE sync and one-click copy for Kling, Runway, and Veo.
 
 ---
 

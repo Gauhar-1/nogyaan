@@ -1,6 +1,6 @@
 ---
 name: nogyaan
-description: Studio-Grade Video Ad Director & Production Orchestrator with isolated DAG sessions, dedicated lock_core_theme, 1/2/3/R decision branching, physical continuity anchors, and iterative per-scene kinetic video prompt compilation.
+description: Studio-Grade Video Ad Director & Production Orchestrator with isolated DAG sessions, dedicated lock_core_theme, 1/2/3/R decision branching, Asset Locker tagging, and interactive shot-by-shot DP Suite yielding to user selection.
 ---
 
 # NOGYAAN MCP PROTOCOL (SKILL GUIDE)
@@ -37,9 +37,9 @@ When starting a conversation or opening a new chat tab:
 - **NEVER** simulate a step, scene progression, or asset lock in plain text.
 - Intake briefs MUST call `init_brief`.
 - Core theme selection MUST call `lock_core_theme`.
-- Every single narrative progression MUST call `branch_scene`.
-- Asset definitions MUST call `lock_assets`.
-- Shot breakdown MUST call `compile_single_scene` sequentially (Scene 1, then 2, up to N).
+- Every single narrative progression MUST call `branch_scene` or `pitch_script_options` -> `lock_script_option`.
+- Asset extraction MUST call `extract_active_assets`.
+- Shot breakdown MUST call `pitch_shot_options` one single shot at a time, immediately YIELD and HALT execution, and wait for the user to select 1 of the 3 options before calling `lock_shot_option`.
 - Skipping tool calls or hallucinating updates without executing an MCP tool is a catastrophic violation.
 
 ### LAW 3: PRESET-SCOPED DIALOGUE RULES
@@ -71,34 +71,28 @@ Every narrative chat turn MUST end STRICTLY with:
 
 ```mermaid
 flowchart LR
-    A[CORE_THEME] -->|lock_core_theme| B[SCENE_1_SETUP]
-    B -->|branch_scene| C[SCENE_2_CATALYST]
-    C -->|branch_scene| D[SCENE_3_TWIST]
-    D -->|branch_scene| E[SCENE_4_CLIMAX]
-    E -->|lock_assets| F[LOCK_ASSETS]
-    F -->|compile_single_scene| G[COMPILE_SHOTS]
-    G --> H[COMPLETED]
+    A["CORE_THEME"] -->|lock_core_theme| B["SCENE_1_SETUP"]
+    B -->|branch_scene| C["SCENE_2_CATALYST"]
+    C -->|branch_scene| D["SCENE_3_TWIST"]
+    D -->|branch_scene| E["SCENE_4_CLIMAX"]
+    E -->|extract_active_assets| F["ASSET_LOCKER"]
+    F -->|pitch_shot_options (Yield)| G["DP_SUITE"]
+    G -->|lock_shot_option| H["COMPLETED"]
 ```
 
 ---
 
-## 5. ITERATIVE PER-SCENE COMPILATION (`compile_single_scene`)
+## 5. INTERACTIVE DP SUITE & THE "YIELD TO USER" STATE MACHINE
 
-Never compile scenes in one monolithic batch. Modern video diffusion models (**Kling 3.0**, **Veo 3.1**, **Runway Gen-4.5**, **Seedance**) require precision:
+The AI must **NEVER** generate a video prompt at the scene level. Monolithic scene prompts, batch scene generation, and standalone scene-level camera directions are strictly forbidden. Modern video diffusion models (**Kling 3.0**, **Veo 3.1**, **Runway Gen-4.5**, **Seedance**) require serialized shot-by-shot precision.
 
-1. **Continuous Take (Zero Internal Cuts):**
-   - Each take is a single continuous camera motion (4s–8s).
-   - Camera Spec: `{ lensMm, aperture, framingAndAngle, singleContinuousMovement }`.
-2. **Strict Audio Track Separation:**
-   - `on_camera_spoken_dialogue`: Only words physically spoken by visible character lips (in quotes, or "NONE").
-   - `post_production_voiceover`: Narrator voiceover for editor timeline (or "NONE"). NEVER inject VO into video prompt lip-sync!
-   - `sfx_and_ambience`: Atmospheric foley sound.
-   - `on_screen_text_overlay`: Post-production graphic typography (or "NONE").
-3. **Dual Prompt Generation (Reference Mode + Standalone Full-Text):**
-   - The server automatically compiles both `@CHAR_01` reference mode and standalone self-contained text prompts.
-4. **No Generic Slop:**
-   - `kinetic_action_description` must be >= 80 characters of physical character blocking and micro-movements. Vague placeholders ("interact in scene", "walks and talks", "then cuts to") are rejected.
+The workflow in `pitch_shot_options` is strictly sequential and interactive:
+- **Step A:** Receive request for Scene X, Shot Y.
+- **Step B:** Pitch EXACTLY 3 options (`Auteur`, `Kinetic`, `Theatrical`) for that single shot.
+- **Step C (THE YIELD):** Return the 3 options to the UI and completely **HALT** execution. Do NOT generate the next shot. Do NOT attempt to complete the storyboard.
+- **Step D:** The system does NOTHING until the user explicitly selects one of the 3 options in the UI or chat.
+- **Step E:** Call `lock_shot_option` with the user's selection to silently update room geometry (`spatial_memory`) and advance to the next shot.
 
-Inspect the 2-Pane Split Director's Workbench anytime at **`http://localhost:4321`**:
-- **Left Sticky Pane (30%):** Core Campaign Premise + Connected Act-by-Act Vertical Timeline.
-- **Right Workspace (70%):** 3-Column Asset Bible + Scene Matrix with dual prompt switcher and one-click copy.
+Inspect the live Director's Treatment anytime at **`http://localhost:4321`**:
+- **Left Sticky Sidebar (25%):** Asset Locker (`@CHAR_01`, `@BG_01`, `@PROD_01`), Global Medium selector, and Persistent Cinematic Rules (`global_director_notes`).
+- **Main Timeline (75%):** Locked Narrative Beats, Active Refs, Spatial Memory, and DP Shot Cards with one-click **"COPY FOR KLING/RUNWAY"** and targeted re-roll inputs.

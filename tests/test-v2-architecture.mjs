@@ -42,7 +42,10 @@ try {
   assert(DP_SYSTEM_PROMPT.startsWith(expectedPrefix), 'DP_SYSTEM_PROMPT must start with Zero-Yap constraint');
   assert(REROLL_SYSTEM_PROMPT.startsWith(expectedPrefix), 'REROLL_SYSTEM_PROMPT must start with Zero-Yap constraint');
 
-  console.log('  ✅ All system prompts strictly enforce Zero-Yap constraint.');
+  const hardStopDirective = 'CRITICAL: You are an interactive DP. You must only pitch 3 options for the CURRENT single shot. Do NOT generate the next shot. Do NOT generate a prompt for the whole scene. Output the 3 options as JSON, then STOP and wait for the user\'s selection. Do not attempt to complete the storyboard.';
+  assert(DP_SYSTEM_PROMPT.includes(hardStopDirective), 'DP_SYSTEM_PROMPT must contain the exact hard stop directive');
+
+  console.log('  ✅ All system prompts strictly enforce Zero-Yap constraint and Hard Stop directive.');
 
   // ==========================================================================
   // Test 2: StateManager JIT Context Slicers (Zero Global Context Drag)
@@ -276,6 +279,68 @@ try {
   assert(validatedState.scenes[1].spatial_memory.length > 0, 'Disk state must preserve spatial_memory array');
 
   console.log('  ✅ nogyaan-state.json on disk validates 100% against NogyaanStateSchema.');
+
+  // ==========================================================================
+  // Test 8: Verify Zero Scene-Level Prompt Tools & Yield State Machine
+  // ==========================================================================
+  console.log('\n🔹 Test 8: MCP Tools Verification (No Eager Scene Compilation & Yield State Machine)');
+  let listHandler = null;
+  let callHandler = null;
+  const mockServer = {
+    setRequestHandler: (schema, handler) => {
+      if (!listHandler) {
+        listHandler = handler;
+      } else {
+        callHandler = handler;
+      }
+    }
+  };
+
+  const { registerMcpTools } = await import('../dist/mcp/tools.js');
+  const { SessionDagService } = await import('../dist/services/session-dag.service.js');
+  const { PresetRegistryService } = await import('../dist/services/preset-registry.service.js');
+  const { PromptCompilerService } = await import('../dist/services/prompt-compiler.service.js');
+
+  const pc = new PromptCompilerService();
+  const pr = new PresetRegistryService();
+  const ss = new SessionDagService(undefined, pc);
+
+  registerMcpTools(
+    mockServer,
+    ss,
+    pr,
+    pc,
+    stateManager,
+    writersRoom,
+    dpPitch,
+    new RerollService(stateManager),
+    assetLocker
+  );
+
+  const toolsListResult = await listHandler();
+  const registeredToolNames = toolsListResult.tools.map((t) => t.name);
+
+  assert(!registeredToolNames.includes('compile_single_scene'), 'compile_single_scene must NOT be exposed as MCP tool');
+  assert(!registeredToolNames.includes('compile_shots'), 'compile_shots must NOT be exposed as MCP tool');
+  assert(registeredToolNames.includes('pitch_shot_options'), 'pitch_shot_options must be registered');
+  assert(registeredToolNames.includes('lock_shot_option'), 'lock_shot_option must be registered');
+
+  // Verify pitch_shot_options yields to user and completely halts
+  const pitchCall = await callHandler({
+    params: {
+      name: 'pitch_shot_options',
+      arguments: { scene_id: 'SCENE_01', shot_id: 'SHOT_01' }
+    }
+  });
+
+  const pitchData = JSON.parse(pitchCall.content[0].text);
+  assert.equal(pitchData.status, 'YIELD_TO_USER', 'Must return YIELD_TO_USER status');
+  assert.equal(pitchData.action_required, 'USER_SELECTION', 'Must require USER_SELECTION');
+  assert.equal(pitchData.options.length, 3, 'Must pitch exactly 3 options');
+  assert.equal(pitchData._systemDirective.directive, 'HARD_STOP_YIELD_TO_USER');
+  assert(pitchData._systemDirective.instruction.includes('CRITICAL: You are an interactive DP. You must only pitch 3 options for the CURRENT single shot. Do NOT generate the next shot. Do NOT generate a prompt for the whole scene. Output the 3 options as JSON, then STOP and wait for the user\'s selection. Do not attempt to complete the storyboard.'));
+
+  console.log('  ✅ MCP Tools verified: Zero scene-level prompt tools, strict Yield-to-User state machine.');
 
   // Clean up
   fs.rmSync(tmpDir, { recursive: true, force: true });

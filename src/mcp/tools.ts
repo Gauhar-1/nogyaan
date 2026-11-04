@@ -219,108 +219,6 @@ export function registerMcpTools(
           }
         },
         {
-          name: 'compile_single_scene',
-          description:
-            'Step 4: Compiles ONE scene at a time with strict video diffusion rules (single continuous camera trajectory, separated onCameraSpokenDialogue vs VO, >= 80 chars physical blocking, dual reference/standalone prompts).',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              session_id: {
-                type: 'string',
-                description: 'Target session ID (defaults to latest active)'
-              },
-              scene_number: {
-                type: 'number',
-                description: 'Scene number being compiled (1, 2, 3, or 4)'
-              },
-              duration_seconds: {
-                type: 'number',
-                description: 'Continuous take runtime in seconds (4s to 8s, default 5s)'
-              },
-              act_title: {
-                type: 'string',
-                description: 'Act title (e.g., "Act I — Setup", "Act II — Catalyst", "Act III — Twist", "Act IV — Climax")'
-              },
-              narrative_title: {
-                type: 'string',
-                description: 'Short creative title for this scene take'
-              },
-              story_beat_summary: {
-                type: 'string',
-                description: 'Preserved human story beat from the locked script'
-              },
-              entry_frame_bridge: {
-                type: 'string',
-                description: 'How this continuous take picks up from previous scene (or "NONE" for Scene 1)'
-              },
-              kinetic_action_description: {
-                type: 'string',
-                description:
-                  'MANDATORY: Minimum 80 characters of continuous physical motion, micro-movements, and camera physics. Zero generic slop ("interact in scene", "walks and talks", "then cuts to" are strictly rejected).'
-              },
-              camera_spec: {
-                type: 'object',
-                properties: {
-                  lensMm: { type: 'string', description: 'Lens focal length (e.g. "24mm", "35mm", "50mm", "85mm")' },
-                  aperture: { type: 'string', description: 'Lens aperture (e.g. "f/1.4", "f/2.8")' },
-                  framingAndAngle: { type: 'string', description: 'Framing & angle (e.g. "Low-angle medium close-up")' },
-                  singleContinuousMovement: { type: 'string', description: 'Continuous take movement (e.g. "Slow cinematic push-in")' }
-                },
-                required: ['lensMm', 'aperture', 'framingAndAngle', 'singleContinuousMovement']
-              },
-              on_camera_spoken_dialogue: {
-                type: 'string',
-                description: 'Exact words physically spoken by visible character moving lips on screen (or "NONE")'
-              },
-              post_production_voiceover: {
-                type: 'string',
-                description: 'Narrator voiceover added in post-production timeline (or "NONE")'
-              },
-              sfx_and_ambience: {
-                type: 'string',
-                description: 'Audio ambience and foley sound effects (or "NONE")'
-              },
-              on_screen_text_overlay: {
-                type: 'string',
-                description: 'Graphic title or typography overlay added in post (or "NONE")'
-              },
-              editor_cut_note: {
-                type: 'string',
-                description: 'Editorial cut transition note for human video editor'
-              },
-              attached_asset_refs: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Locked asset IDs present in this take (e.g. ["@CHAR_01", "@BG_01", "@PROD_01"])'
-              }
-            },
-            required: ['scene_number', 'kinetic_action_description', 'camera_spec', 'attached_asset_refs']
-          }
-        },
-        {
-          name: 'compile_shots',
-          description:
-            'Convenience batch compiler: Compiles multiple scenes in sequence. Use compile_single_scene for step-by-step control.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              session_id: {
-                type: 'string',
-                description: 'Target session ID (defaults to latest active)'
-              },
-              shots: {
-                type: 'array',
-                description: 'Array of scene shots to compile'
-              },
-              openStudioUi: {
-                type: 'boolean',
-                description: 'Whether to open http://localhost:4321 in browser'
-              }
-            },
-            required: ['shots']
-          }
-        },
-        {
           name: 'pitch_script_options',
           description:
             'Phase 1 Writer\'s Room: JIT context-sliced narrative branching. Passes ONLY core premise and Scene N-1 locked narrative (zero camera data, zero assets). Generates exactly 3 minified ScriptPitch options (Heartfelt, Viral, Offbeat).',
@@ -374,7 +272,7 @@ export function registerMcpTools(
         {
           name: 'pitch_shot_options',
           description:
-            'Phase 3 DP Suite / Shot Compiler: Serialized shot-by-shot iteration. Passes ONLY Scene N narrative txt, Filtered Asset Bible (Scene N active_refs only), and Shot X-1 preceding state. Returns exactly 3 ShotPitch options (Auteur, Kinetic, Theatrical) with style-agnostic prmpt.',
+            'Phase 3 DP Suite: Strictly sequential shot-by-shot pitch. Receives Scene X, Shot Y, pitches EXACTLY 3 options (Auteur, Kinetic, Theatrical) for that single shot, and completely HALTS execution to yield to the user. The AI must STOP and do nothing until the user explicitly selects one of the 3 options in the UI.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -653,63 +551,6 @@ export function registerMcpTools(
         };
       }
 
-      if (name === 'compile_single_scene') {
-        const result = sessionService.compileSingleScene({
-          sessionId: input.session_id,
-          sceneNumber: input.scene_number,
-          durationSeconds: input.duration_seconds,
-          actTitle: input.act_title,
-          narrativeTitle: input.narrative_title,
-          storyBeatSummary: input.story_beat_summary,
-          entryFrameBridge: input.entry_frame_bridge,
-          kineticActionDescription: input.kinetic_action_description,
-          cameraSpec: input.camera_spec,
-          onCameraSpokenDialogue: input.on_camera_spoken_dialogue,
-          postProductionVoiceover: input.post_production_voiceover,
-          sfxAndAmbience: input.sfx_and_ambience,
-          onScreenTextOverlay: input.on_screen_text_overlay,
-          editorCutNote: input.editor_cut_note,
-          attachedAssetRefs: input.attached_asset_refs
-        });
-
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-        };
-      }
-
-      if (name === 'compile_shots') {
-        const activeSession = sessionService.loadSession(input.session_id);
-        const preset = activeSession ? presetRegistry.getPresetById(activeSession.presetId) : undefined;
-        const languageRule = preset?.dialogueLanguageRule || 'Strictly adhere to preset language rules.';
-
-        const result = sessionService.compileShots({
-          sessionId: input.session_id,
-          shots: input.shots,
-          openStudioUi: input.openStudioUi,
-          presetLanguageRule: languageRule
-        });
-
-        if (input.openStudioUi !== false) {
-          try {
-            await open('http://localhost:4321');
-          } catch {}
-        }
-
-        const outputData = {
-          success: true,
-          sessionId: result.session.sessionId,
-          currentStage: result.session.stage,
-          compiledShots: result.compiledShots,
-          studioCanvasUrl: 'http://localhost:4321',
-          dialogueLanguageRule: languageRule,
-          _systemDirective: result.directive
-        };
-
-        return {
-          content: [{ type: 'text', text: JSON.stringify(outputData, null, 2) }]
-        };
-      }
-
       if (name === 'pitch_script_options') {
         const options = await writersRoom.pitchScriptOptions({
           scene_id: input.scene_id,
@@ -804,24 +645,35 @@ export function registerMcpTools(
       }
 
       if (name === 'pitch_shot_options') {
+        // Step A: Tool receives request for Scene X, Shot Y
         const options = await dpPitch.pitchShotOptions({
           scene_id: input.scene_id,
           shot_id: input.shot_id
         });
+
+        // Step B: Generated EXACTLY 3 options (Auteur, Kinetic, Theatrical) for that single shot
+        // Step C (THE YIELD): Return these 3 options to the UI/MCP and completely HALT execution.
+        // Step D: System does NOTHING until the user explicitly selects one of the 3 options.
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify(
                 {
-                  success: true,
+                  status: 'YIELD_TO_USER',
+                  action_required: 'USER_SELECTION',
+                  message: `Pitched 3 options for ${input.scene_id} ${input.shot_id}. Execution halted. Waiting for user to select 1 option before proceeding.`,
                   scene_id: input.scene_id,
                   shot_id: input.shot_id,
                   pitches: options,
+                  options: options,
                   _systemDirective: {
+                    directive: 'HARD_STOP_YIELD_TO_USER',
                     instruction:
-                      'Present these 3 DP treatments to the user (Auteur, Kinetic, Theatrical). Once selected, call "lock_shot_option".',
-                    endingRule: "End response with: 'Select Treatment A, B, or C or request targeted camera adjustments.'"
+                      'CRITICAL: You are an interactive DP. You must only pitch 3 options for the CURRENT single shot. Do NOT generate the next shot. Do NOT generate a prompt for the whole scene. Output the 3 options as JSON, then STOP and wait for the user\'s selection. Do not attempt to complete the storyboard.',
+                    workflow:
+                      '1. Display the 3 pitched treatments (A: Auteur, B: Kinetic, C: Theatrical) to the user. 2. Completely HALT execution. Do NOT call pitch_shot_options for the next shot. Do NOT proceed. 3. Wait for the user to explicitly select an option in the UI or chat. 4. Only after the user selects, call lock_shot_option.',
+                    endingRule: 'Select Treatment A, B, or C or request targeted camera adjustments before moving to the next shot.'
                   }
                 },
                 null,

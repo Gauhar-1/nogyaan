@@ -21,7 +21,6 @@ import {
 import { PresetRegistryService } from './services/preset-registry.service.js';
 import { PromptCompilerService } from './services/prompt-compiler.service.js';
 import { SessionDagService } from './services/session-dag.service.js';
-import { DirectorsShotCompilerService } from './services/directors-shot-compiler.service.js';
 import { StateManager } from './v2/state-manager.js';
 import { WritersRoomService } from './v2/writers-room.service.js';
 import { AssetLockerService } from './v2/asset-locker.service.js';
@@ -54,7 +53,6 @@ function getPackageRoot(): string {
 const promptCompiler = new PromptCompilerService();
 const presetRegistry = new PresetRegistryService();
 const sessionService = new SessionDagService(undefined, promptCompiler);
-const directorsCompiler = new DirectorsShotCompilerService(sessionService);
 
 // Initialize V2 Architecture Services
 const stateManager = new StateManager();
@@ -110,60 +108,6 @@ function startStudioServer(port: number = 4321): void {
         res.end(JSON.stringify(currentSession, null, 2));
       } else {
         res.end(JSON.stringify({ status: 'NO_ACTIVE_SESSION' }));
-      }
-      return;
-    }
-
-    // API endpoint: Tier 2 Initial Compilation (POST /api/compile-shots)
-    if (req.method === 'POST' && parsedUrl.pathname === '/api/compile-shots') {
-      parseJsonBody(req)
-        .then(async (body) => {
-          try {
-            const cut = await directorsCompiler.compileDirectorsCut(body);
-            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(cut, null, 2));
-          } catch (err: any) {
-            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ error: err.message }));
-          }
-        })
-        .catch((err) => {
-          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: err.message }));
-        });
-      return;
-    }
-
-    // API endpoint: Tier 2 Targeted Re-Roll (POST /api/reroll-shot)
-    if (req.method === 'POST' && parsedUrl.pathname === '/api/reroll-shot') {
-      parseJsonBody(req)
-        .then(async (body) => {
-          try {
-            const cut = await directorsCompiler.rerollSubShot(body);
-            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(cut, null, 2));
-          } catch (err: any) {
-            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ error: err.message }));
-          }
-        })
-        .catch((err) => {
-          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: err.message }));
-        });
-      return;
-    }
-
-    // API endpoint: Get Current DirectorsCut (GET /api/directors-cut)
-    if (req.method === 'GET' && parsedUrl.pathname === '/api/directors-cut') {
-      const sessionId = parsedUrl.searchParams.get('session_id') || undefined;
-      const cut = directorsCompiler.loadCurrentDirectorsCut(sessionId);
-      if (cut) {
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(cut, null, 2));
-      } else {
-        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ status: 'NO_DIRECTORS_CUT' }));
       }
       return;
     }
@@ -506,7 +450,7 @@ const server = new Server(
 // Register Dynamic MCP Prompts for Claude Slash Commands (/preset-...)
 registerMcpPrompts(server, presetRegistry);
 
-// Register MCP Tools (list_presets, init_brief, branch_scene, lock_assets, compile_shots, pitch_script_options, etc.)
+// Register MCP Tools (list_presets, init_brief, branch_scene, lock_assets, pitch_script_options, pitch_shot_options, etc.)
 registerMcpTools(
   server,
   sessionService,
