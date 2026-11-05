@@ -1,21 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { NogyaanState, Medium, LockedScript, LockedShot } from '../v2/types.js';
 
-const MEDIUM_OPTIONS: Medium[] = [
-  'Live-Action Cinematic',
-  '2D Anime',
-  '3D Pixar Style'
-];
-
 export const DirectorsTreatmentApp: React.FC = () => {
   const [state, setState] = useState<NogyaanState | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [copiedShotId, setCopiedShotId] = useState<string | null>(null);
-  const [reRollingNodeId, setReRollingNodeId] = useState<string | null>(null);
-  const [isExtractingAssets, setIsExtractingAssets] = useState<boolean>(false);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [directorNotes, setDirectorNotes] = useState<string>('');
-  const [isSavingNotes, setIsSavingNotes] = useState<boolean>(false);
   const [collapsedPayloads, setCollapsedPayloads] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -24,72 +13,47 @@ export const DirectorsTreatmentApp: React.FC = () => {
       .then((res) => res.json())
       .then((data: NogyaanState) => {
         setState(data);
-        if (data.global_director_notes !== undefined) {
-          setDirectorNotes(data.global_director_notes);
-        }
       })
       .catch((err) => console.error('Failed to fetch initial state:', err));
 
     // 2. Real-Time Server-Sent Events (SSE) Stream
-    const eventSource = new EventSource('/api/v2/events');
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/v2/events');
 
-    eventSource.onopen = () => {
-      setIsConnected(true);
-    };
+      eventSource.onopen = () => {
+        setIsConnected(true);
+      };
 
-    eventSource.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload.type === 'INIT' || payload.type === 'STATE_UPDATED') {
-          setState(payload.state);
-          if (payload.state?.global_director_notes !== undefined) {
-            setDirectorNotes(payload.state.global_director_notes);
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'INIT' || payload.type === 'STATE_UPDATED') {
+            setState(payload.state);
           }
+        } catch (err) {
+          console.error('Failed to parse SSE event:', err);
         }
-      } catch (err) {
-        console.error('Failed to parse SSE event:', err);
-      }
-    };
+      };
 
-    eventSource.onerror = () => {
-      setIsConnected(false);
-    };
+      eventSource.onerror = () => {
+        setIsConnected(false);
+      };
+    } catch {
+      // Fallback polling if SSE is unsupported
+      const interval = setInterval(() => {
+        fetch('/api/v2/state')
+          .then((res) => res.json())
+          .then((data: NogyaanState) => setState(data))
+          .catch(() => {});
+      }, 3000);
+      return () => clearInterval(interval);
+    }
 
     return () => {
-      eventSource.close();
+      if (eventSource) eventSource.close();
     };
   }, []);
-
-  const handleMediumChange = async (newMedium: Medium) => {
-    try {
-      const res = await fetch('/api/v2/medium', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ medium: newMedium })
-      });
-      const data = await res.json();
-      if (data.state) setState(data.state);
-    } catch (err) {
-      console.error('Failed to update medium:', err);
-    }
-  };
-
-  const handleSaveDirectorNotes = async () => {
-    setIsSavingNotes(true);
-    try {
-      const res = await fetch('/api/v2/director-notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: directorNotes })
-      });
-      const data = await res.json();
-      if (data.state) setState(data.state);
-    } catch (err) {
-      console.error('Failed to update director notes:', err);
-    } finally {
-      setIsSavingNotes(false);
-    }
-  };
 
   const handleCopyPrompt = async (shotId: string, promptText: string) => {
     const medium = state?.global_medium || 'Live-Action Cinematic';
@@ -110,44 +74,6 @@ export const DirectorsTreatmentApp: React.FC = () => {
     }
   };
 
-  const handleReroll = async (nodeId: string) => {
-    const feedback = notes[nodeId]?.trim();
-    if (!feedback) return;
-
-    setReRollingNodeId(nodeId);
-    try {
-      const res = await fetch('/api/v2/reroll-node', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ node_id: nodeId, user_feedback: feedback })
-      });
-      const data = await res.json();
-      if (data.result?.state) {
-        setState(data.result.state);
-        setNotes((prev) => ({ ...prev, [nodeId]: '' }));
-      }
-    } catch (err) {
-      console.error('Failed to reroll node:', err);
-    } finally {
-      setReRollingNodeId(null);
-    }
-  };
-
-  const handleExtractAssets = async () => {
-    setIsExtractingAssets(true);
-    try {
-      const res = await fetch('/api/v2/extract-assets', { method: 'POST' });
-      const data = await res.json();
-      if (data.state) {
-        setState(data.state);
-      }
-    } catch (err) {
-      console.error('Failed to extract assets:', err);
-    } finally {
-      setIsExtractingAssets(false);
-    }
-  };
-
   const togglePayloadCollapse = (shotId: string) => {
     setCollapsedPayloads((prev) => ({
       ...prev,
@@ -157,151 +83,99 @@ export const DirectorsTreatmentApp: React.FC = () => {
 
   if (!state) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-950 text-slate-400 font-sans">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-medium">Connecting to nogyaan Treatment Engine...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen bg-black text-neutral-400 font-mono text-xs uppercase tracking-widest">
+        CONNECTING TO NOGYAAN ENGINE...
       </div>
     );
   }
 
-  const { assets, global_medium, scenes, core_premise } = state;
-  const allScenesLocked = scenes.length >= 4 && scenes.every((s) => s.locked_script);
-  const hasActiveRefs = scenes.some((s) => s.active_refs && s.active_refs.length > 0);
+  const { assets, global_medium, scenes, core_premise, global_director_notes, project_id } = state;
 
   return (
-    <div className="flex h-screen w-full bg-slate-950 text-slate-100 font-sans overflow-hidden">
+    <div className="flex h-screen w-full bg-black text-neutral-100 font-sans overflow-hidden">
       {/* ==================================================================== */}
-      {/* 1. STICKY SIDEBAR: ASSET BIBLE & PERSISTENT RULES (25% Width)       */}
+      {/* 1. STICKY SIDEBAR: ASSET BIBLE & PERSISTENT RULES (Read-Only 25%)    */}
       {/* ==================================================================== */}
-      <aside className="w-1/4 min-w-[300px] max-w-[380px] h-screen bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0 z-20">
+      <aside className="w-1/4 min-w-[300px] max-w-[380px] h-screen bg-neutral-950 border-r border-neutral-800 flex flex-col flex-shrink-0 z-20">
         {/* Sidebar Header */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-mono text-sm font-bold">
-              N
-            </div>
-            <div>
-              <h2 className="text-sm font-bold tracking-wider text-slate-100 uppercase font-mono">
-                Asset Locker
-              </h2>
-              <span className="text-xs text-slate-400 font-mono">
-                Project: {state.project_id}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
-              }`}
-            />
-            <span className="text-[10px] uppercase font-mono text-slate-400">
-              {isConnected ? 'LIVE SSE' : 'OFFLINE'}
+        <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
+          <div>
+            <h2 className="text-xs font-mono font-bold tracking-widest text-white uppercase">
+              ASSET LOCKER
+            </h2>
+            <span className="text-[10px] text-neutral-500 font-mono block mt-0.5">
+              SPECIFICATION BIBLE
             </span>
           </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-neutral-800 bg-neutral-900 text-neutral-400 uppercase tracking-widest">
+            {isConnected ? 'LIVE SSE' : 'OFFLINE'}
+          </span>
         </div>
 
-        {/* Global Medium Selector */}
-        <div className="p-5 border-b border-slate-800 bg-slate-900/50">
-          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Global Render Medium
-          </label>
-          <select
-            value={global_medium}
-            onChange={(e) => handleMediumChange(e.target.value as Medium)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors cursor-pointer"
-          >
-            {MEDIUM_OPTIONS.map((opt) => (
-              <option key={opt} value={opt} className="bg-slate-800 text-slate-100">
-                {opt}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1.5 text-[11px] text-slate-500">
-            Prepended dynamically to DP prompts upon copy.
+        {/* Global Render Medium Spec (Read-Only) */}
+        <div className="p-4 border-b border-neutral-800 bg-neutral-950">
+          <span className="block text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-widest mb-1">
+            GLOBAL RENDER MEDIUM
+          </span>
+          <span className="text-xs font-mono text-white font-semibold">
+            {global_medium}
+          </span>
+          <p className="mt-1 text-[10px] text-neutral-500 font-mono">
+            Prepended dynamically to video prompts upon copy.
           </p>
         </div>
 
-        {/* Persistent Cinematic Rules (Global Director Notes) */}
-        <div className="p-5 border-b border-slate-800 bg-slate-900/30">
-          <div className="flex items-center justify-between mb-2">
-            <label className="block text-xs font-semibold text-amber-400 uppercase tracking-wider font-mono">
-              Persistent Cinematic Rules
-            </label>
-            <button
-              onClick={handleSaveDirectorNotes}
-              disabled={isSavingNotes}
-              className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors"
-            >
-              {isSavingNotes ? 'Saving...' : 'Save Rules'}
-            </button>
-          </div>
-          <textarea
-            value={directorNotes}
-            onChange={(e) => setDirectorNotes(e.target.value)}
-            placeholder="e.g., Scene 4 must visually mirror Scene 1; keep lighting warm and nostalgic across all scenes..."
-            rows={2}
-            className="w-full bg-slate-950 border border-slate-800 rounded-md p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-sans resize-none"
-          />
-        </div>
-
-        {/* Phase 2: Active Asset Extraction Action Banner */}
-        {allScenesLocked && !hasActiveRefs && (
-          <div className="p-4 bg-emerald-500/10 border-b border-emerald-500/20">
-            <p className="text-xs font-medium text-emerald-300 mb-2">
-              All 4 scenes locked! Tag active asset references before DP Suite:
+        {/* Persistent Cinematic Rules (Read-Only) */}
+        {global_director_notes && (
+          <div className="p-4 border-b border-neutral-800 bg-neutral-950">
+            <span className="block text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-widest mb-1">
+              PERSISTENT CINEMATIC RULES
+            </span>
+            <p className="text-xs font-mono text-neutral-300 leading-relaxed">
+              {global_director_notes}
             </p>
-            <button
-              onClick={handleExtractAssets}
-              disabled={isExtractingAssets}
-              className="w-full py-1.5 px-3 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wide transition-all shadow-md font-mono"
-            >
-              {isExtractingAssets ? 'Tagging Active Assets...' : 'Extract & Tag Active Assets'}
-            </button>
           </div>
         )}
 
         {/* Scrollable Bible Contents */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {/* Hero Product Card */}
-          <div className="bg-slate-800/60 border border-slate-700/80 rounded-lg p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono">
-                Hero Product
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
+                HERO PRODUCT
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 text-white border border-neutral-700">
                 @PROD_01
               </span>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed font-sans">
+            <p className="text-xs text-neutral-300 font-sans leading-relaxed">
               {assets.product || (
-                <span className="italic text-slate-500">Awaiting asset extraction.</span>
+                <span className="italic text-neutral-500">Awaiting asset extraction.</span>
               )}
             </p>
           </div>
 
           {/* Characters Card */}
-          <div className="bg-slate-800/60 border border-slate-700/80 rounded-lg p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded p-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 font-mono">
-                Characters
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
+                CHARACTERS
               </span>
-              <span className="text-[10px] font-mono text-slate-400">
-                {Object.keys(assets.characters || {}).length} Total
+              <span className="text-[10px] font-mono text-neutral-500">
+                {Object.keys(assets.characters || {}).length} TOTAL
               </span>
             </div>
             <div className="space-y-2.5">
               {Object.keys(assets.characters || {}).length === 0 ? (
-                <p className="text-xs italic text-slate-500">No characters extracted yet.</p>
+                <p className="text-xs italic text-neutral-500">No characters registered.</p>
               ) : (
                 Object.entries(assets.characters).map(([id, desc]) => (
-                  <div key={id} className="p-2.5 rounded bg-slate-900/60 border border-slate-800">
-                    <span className="text-[11px] font-mono font-bold text-indigo-300">
+                  <div key={id} className="p-2.5 rounded bg-neutral-950 border border-neutral-800">
+                    <span className="text-[11px] font-mono font-bold text-white block">
                       @{id.replace(/^@/, '')}
                     </span>
-                    <p className="text-xs text-slate-300 mt-1 leading-snug">{desc}</p>
+                    <p className="text-xs text-neutral-300 mt-1 leading-snug font-sans">{desc}</p>
                   </div>
                 ))
               )}
@@ -309,25 +183,25 @@ export const DirectorsTreatmentApp: React.FC = () => {
           </div>
 
           {/* Backgrounds Card */}
-          <div className="bg-slate-800/60 border border-slate-700/80 rounded-lg p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded p-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 font-mono">
-                Environments
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
+                ENVIRONMENTS
               </span>
-              <span className="text-[10px] font-mono text-slate-400">
-                {Object.keys(assets.backgrounds || {}).length} Total
+              <span className="text-[10px] font-mono text-neutral-500">
+                {Object.keys(assets.backgrounds || {}).length} TOTAL
               </span>
             </div>
             <div className="space-y-2.5">
               {Object.keys(assets.backgrounds || {}).length === 0 ? (
-                <p className="text-xs italic text-slate-500">No environments extracted yet.</p>
+                <p className="text-xs italic text-neutral-500">No environments registered.</p>
               ) : (
                 Object.entries(assets.backgrounds).map(([id, desc]) => (
-                  <div key={id} className="p-2.5 rounded bg-slate-900/60 border border-slate-800">
-                    <span className="text-[11px] font-mono font-bold text-amber-300">
+                  <div key={id} className="p-2.5 rounded bg-neutral-950 border border-neutral-800">
+                    <span className="text-[11px] font-mono font-bold text-white block">
                       @{id.replace(/^@/, '')}
                     </span>
-                    <p className="text-xs text-slate-300 mt-1 leading-snug">{desc}</p>
+                    <p className="text-xs text-neutral-300 mt-1 leading-snug font-sans">{desc}</p>
                   </div>
                 ))
               )}
@@ -337,31 +211,57 @@ export const DirectorsTreatmentApp: React.FC = () => {
       </aside>
 
       {/* ==================================================================== */}
-      {/* 2. MAIN TIMELINE (75% Width)                                         */}
+      {/* 2. MAIN TIMELINE (Read-Only 75% Width)                                */}
       {/* ==================================================================== */}
-      <main className="flex-1 h-screen overflow-y-auto bg-slate-950 p-8 space-y-10">
-        <header className="flex items-center justify-between border-b border-slate-800 pb-5">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-100 font-sans">
-              The Director's Treatment
-            </h1>
-            <p className="text-sm text-slate-400 mt-1 font-sans">
-              Single unified directorial vision: Writer's Room, Asset Locker, and DP Suite.
-            </p>
+      <main className="flex-1 h-screen overflow-y-auto bg-black p-8 space-y-10">
+        {/* Global Document Header with Core Theme & Campaign Goal */}
+        <header className="border-b border-neutral-800 pb-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-neutral-500 block mb-1">
+                THE DIRECTOR'S TREATMENT // READ-ONLY LIVE WORKBENCH
+              </span>
+              <h1 className="text-2xl font-bold tracking-tight text-white font-sans uppercase">
+                {project_id || 'NOGYAAN PRODUCTION'}
+              </h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-mono px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 uppercase">
+                {global_medium}
+              </span>
+              <span className="text-[10px] font-mono px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 uppercase">
+                {scenes.length} SCENES IN SEQUENCE
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-mono px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-slate-300">
-              {scenes.length} Scenes in Sequence
+
+          {/* Prominently Displayed Core Theme / Campaign Goal */}
+          <div className="p-5 bg-neutral-950 border border-neutral-800 rounded">
+            <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-neutral-400 block mb-2">
+              CAMPAIGN CORE PREMISE & EMOTIONAL GOAL
             </span>
+            <p className="font-serif text-lg leading-relaxed text-white">
+              {core_premise || 'No core campaign premise established yet. Call init_brief and lock_core_theme.'}
+            </p>
+            {global_director_notes && (
+              <div className="mt-3 pt-3 border-t border-neutral-800">
+                <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-neutral-400 block mb-1">
+                  PERSISTENT CINEMATIC DIRECTIVES:
+                </span>
+                <p className="font-mono text-xs text-neutral-300">
+                  {global_director_notes}
+                </p>
+              </div>
+            )}
           </div>
         </header>
 
         {/* Empty State */}
         {scenes.length === 0 ? (
-          <div className="border border-dashed border-slate-800 rounded-xl p-12 text-center">
-            <p className="text-base font-semibold text-slate-300">No Scenes Created Yet</p>
-            <p className="text-xs text-slate-500 mt-2 max-w-md mx-auto">
-              Call <code className="text-emerald-400 font-mono">pitch_script_options</code> from your MCP client (Claude Desktop or Cursor) to start the Writer's Room.
+          <div className="border border-dashed border-neutral-800 rounded p-12 text-center">
+            <p className="text-base font-semibold text-neutral-300">No Scenes Created Yet</p>
+            <p className="text-xs text-neutral-500 mt-2 max-w-md mx-auto font-mono">
+              Call pitch_script_options from Claude chat to begin the Writer's Room.
             </p>
           </div>
         ) : (
@@ -373,11 +273,7 @@ export const DirectorsTreatmentApp: React.FC = () => {
                 index={sceneIndex}
                 globalMedium={global_medium}
                 copiedShotId={copiedShotId}
-                reRollingNodeId={reRollingNodeId}
-                notes={notes}
                 collapsedPayloads={collapsedPayloads}
-                onNoteChange={(id, val) => setNotes((prev) => ({ ...prev, [id]: val }))}
-                onReroll={handleReroll}
                 onCopyPrompt={handleCopyPrompt}
                 onToggleCollapse={togglePayloadCollapse}
               />
@@ -390,7 +286,7 @@ export const DirectorsTreatmentApp: React.FC = () => {
 };
 
 // ============================================================================
-// Scene Section Component
+// Scene Section Component (Strictly Read-Only)
 // ============================================================================
 
 interface SceneSectionProps {
@@ -398,11 +294,7 @@ interface SceneSectionProps {
   index: number;
   globalMedium: Medium;
   copiedShotId: string | null;
-  reRollingNodeId: string | null;
-  notes: Record<string, string>;
   collapsedPayloads: Record<string, boolean>;
-  onNoteChange: (id: string, val: string) => void;
-  onReroll: (nodeId: string) => void;
   onCopyPrompt: (shotId: string, aiPayload: string) => void;
   onToggleCollapse: (shotId: string) => void;
 }
@@ -412,11 +304,7 @@ const SceneSection: React.FC<SceneSectionProps> = ({
   index,
   globalMedium,
   copiedShotId,
-  reRollingNodeId,
-  notes,
   collapsedPayloads,
-  onNoteChange,
-  onReroll,
   onCopyPrompt,
   onToggleCollapse
 }) => {
@@ -428,56 +316,56 @@ const SceneSection: React.FC<SceneSectionProps> = ({
   const scriptId = (locked_script as any)?.id || (locked_script as any)?.option_id || scene_id;
 
   return (
-    <section className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 transition-all">
+    <section className="bg-neutral-950 border border-neutral-800 rounded p-6">
       {/* Scene Top Badge */}
-      <div className="flex items-center justify-between border-b border-slate-800/80 pb-4 mb-6">
+      <div className="flex items-center justify-between border-b border-neutral-800 pb-4 mb-6">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs font-bold px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-200">
-            ACT {index + 1}
+          <span className="font-mono text-xs font-bold px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-300">
+            ACT {String(index + 1).padStart(2, '0')}
           </span>
-          <h2 className="text-lg font-bold text-slate-100 tracking-wide font-mono">
+          <h2 className="text-base font-bold text-white tracking-wide font-mono">
             {scene_id}
           </h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div>
           {locked_script ? (
-            <span className="text-xs font-mono font-medium px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <span className="text-xs font-mono font-medium px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 uppercase">
               SCRIPT LOCKED ({scriptStyle})
             </span>
           ) : (
-            <span className="text-xs font-mono font-medium px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+            <span className="text-xs font-mono font-medium px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-500 uppercase">
               PENDING SCRIPT
             </span>
           )}
         </div>
       </div>
 
-      {/* Phase 1: Locked Script Narrative */}
+      {/* Surface Crucial State Data: Scene Visual Intent Story Block BEFORE Shot Cards */}
       {locked_script && (
-        <div className="mb-8 p-5 bg-slate-900/90 border border-slate-800 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs uppercase font-bold tracking-wider text-slate-400 font-sans">
-              Locked Narrative Beat
+        <div className="mb-8 p-5 bg-neutral-900 border border-neutral-800 rounded">
+          <div className="flex items-center justify-between mb-3 border-b border-neutral-800 pb-2">
+            <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-neutral-400">
+              SCENE NARRATIVE // VISUAL INTENT
             </span>
-            <span className="text-xs font-mono text-slate-500">
+            <span className="text-[10px] font-mono text-neutral-500">
               {scriptId}
             </span>
           </div>
-          <p className="text-sm text-slate-200 leading-relaxed font-sans mb-4">
-            {scriptTxt}
+          <p className="font-serif text-base italic leading-relaxed text-neutral-100 mb-4">
+            "{scriptTxt}"
           </p>
 
-          {/* Phase 2: Active Refs Tagging Badge Row */}
+          {/* Active Refs Tagging */}
           {active_refs && active_refs.length > 0 && (
-            <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2 mb-3">
-              <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-                Tagged Active Refs:
+            <div className="pt-3 border-t border-neutral-800 flex items-center gap-2 mb-3">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
+                ACTIVE REFERENCES:
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {active_refs.map((ref) => (
                   <span
                     key={ref}
-                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-300"
+                    className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-neutral-300"
                   >
                     {ref}
                   </span>
@@ -488,17 +376,17 @@ const SceneSection: React.FC<SceneSectionProps> = ({
 
           {/* Rolling Spatial Memory (Room Geometry) */}
           {spatial_memory && spatial_memory.length > 0 && (
-            <div className="pt-3 border-t border-slate-800/80 flex flex-col gap-1.5 mb-3">
-              <span className="text-[11px] font-mono text-emerald-400 uppercase tracking-wider font-semibold">
-                Room Geometry (Spatial Memory):
+            <div className="pt-3 border-t border-neutral-800 flex flex-col gap-1.5 mb-3">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 font-semibold">
+                ROOM GEOMETRY (SPATIAL MEMORY):
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {spatial_memory.map((fact, idx) => (
                   <span
                     key={idx}
-                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"
+                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-neutral-300"
                   >
-                    📍 {fact}
+                    [SPATIAL] {fact}
                   </span>
                 ))}
               </div>
@@ -507,58 +395,69 @@ const SceneSection: React.FC<SceneSectionProps> = ({
 
           {/* Temporal Handshake (Last Shot Egress) */}
           {scene.last_shot_egress && (
-            <div className="pt-3 border-t border-slate-800/80 flex flex-col gap-1.5 mb-3">
-              <span className="text-[11px] font-mono text-cyan-400 uppercase tracking-wider font-semibold">
-                Temporal Handshake (Last Shot Egress):
+            <div className="pt-3 border-t border-neutral-800 flex flex-col gap-1.5 mb-3">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 font-semibold">
+                TEMPORAL HANDSHAKE (LAST SHOT EGRESS):
               </span>
-              <span className="text-xs text-cyan-200 font-sans italic bg-cyan-950/40 border border-cyan-800/50 rounded px-2.5 py-1">
-                🔗 {scene.last_shot_egress}
+              <span className="text-xs font-mono text-neutral-300 bg-neutral-950 border border-neutral-800 rounded px-2.5 py-1">
+                [EGRESS] {scene.last_shot_egress}
               </span>
             </div>
           )}
 
-          {/* Script Re-roll Note */}
-          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Directorial note on script narrative..."
-              value={notes[scene_id] || ''}
-              onChange={(e) => onNoteChange(scene_id, e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && onReroll(scene_id)}
-              disabled={reRollingNodeId === scene_id}
-              className="flex-1 bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans"
-            />
-            <button
-              onClick={() => onReroll(scene_id)}
-              disabled={reRollingNodeId === scene_id || !notes[scene_id]?.trim()}
-              className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-xs font-semibold text-slate-200 transition-colors font-mono"
-            >
-              {reRollingNodeId === scene_id ? 'Refining...' : 'Refine Script'}
-            </button>
-          </div>
+          {/* Audio Stems Separation */}
+          {(locked_script as any).audio_stem && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-neutral-800 text-xs">
+              <div className="p-3 bg-neutral-950 rounded border border-neutral-800">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400 block mb-1">
+                  DIALOGUE (LIP-SYNC STEM)
+                </span>
+                <p className="font-serif italic text-neutral-200">
+                  {(locked_script as any).audio_stem?.dialogue
+                    ? `"${(locked_script as any).audio_stem.dialogue}"`
+                    : 'None (Action only)'}
+                </p>
+              </div>
+              <div className="p-3 bg-neutral-950 rounded border border-neutral-800">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400 block mb-1">
+                  SFX & AMBIENCE (FOLEY STEM)
+                </span>
+                <p className="font-mono text-neutral-300">
+                  {(locked_script as any).audio_stem?.sfx || 'Ambient soundscape'}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Phase 3: DP Shot Coverage */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300 font-mono">
-            Director of Photography (DP) Coverage
+          <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-neutral-300">
+            DIRECTOR OF PHOTOGRAPHY (DP) COVERAGE
           </h3>
-          <span className="text-xs font-mono text-slate-500">
-            {shotEntries.length} Shots
+          <span className="text-[10px] font-mono text-neutral-500">
+            {shotEntries.length} SHOTS TOTAL
           </span>
         </div>
 
         {shotEntries.length === 0 ? (
-          <p className="text-xs italic text-slate-500 py-3">
-            No shots pitched yet for this scene. Call <code className="text-emerald-400 font-mono">pitch_shot_concepts</code> to generate 3 concepts.
+          <p className="text-xs font-mono text-neutral-500 py-3">
+            No shots pitched yet for this scene. Call pitch_shot_concepts in chat to generate 3 concepts.
           </p>
         ) : (
           <div className="space-y-6">
             {shotEntries.map(([shotKey, shotVal]) => {
               const lockedShot = (shotVal as any).locked_shot || shotVal;
-              if (!lockedShot || (!lockedShot.visual_intent && !lockedShot.txt && !lockedShot.sota_payload && !lockedShot.prmpt)) return null;
+              if (
+                !lockedShot ||
+                (!lockedShot.visual_intent &&
+                  !lockedShot.txt &&
+                  !lockedShot.sota_payload &&
+                  !lockedShot.prmpt)
+              )
+                return null;
               const nodeIdentifier = `${scene_id}:${shotKey}`;
               const sId = (lockedShot as any).id || (lockedShot as any).option_id || shotKey;
 
@@ -570,11 +469,7 @@ const SceneSection: React.FC<SceneSectionProps> = ({
                   nodeId={nodeIdentifier}
                   globalMedium={globalMedium}
                   isCopied={copiedShotId === sId}
-                  isReRolling={reRollingNodeId === nodeIdentifier}
                   isPayloadCollapsed={!!collapsedPayloads[sId]}
-                  noteValue={notes[nodeIdentifier] || ''}
-                  onNoteChange={(val) => onNoteChange(nodeIdentifier, val)}
-                  onReroll={() => onReroll(nodeIdentifier)}
                   onCopy={(prmpt) => onCopyPrompt(sId, prmpt)}
                   onToggleCollapse={() => onToggleCollapse(sId)}
                 />
@@ -588,7 +483,7 @@ const SceneSection: React.FC<SceneSectionProps> = ({
 };
 
 // ============================================================================
-// Shot Card Component
+// Shot Card Component (Strictly Read-Only, Monochrome, ONLY Button: Copy)
 // ============================================================================
 
 interface ShotCardProps {
@@ -597,11 +492,7 @@ interface ShotCardProps {
   nodeId: string;
   globalMedium: Medium;
   isCopied: boolean;
-  isReRolling: boolean;
   isPayloadCollapsed: boolean;
-  noteValue: string;
-  onNoteChange: (val: string) => void;
-  onReroll: () => void;
   onCopy: (prmpt: string) => void;
   onToggleCollapse: () => void;
 }
@@ -611,97 +502,75 @@ const ShotCard: React.FC<ShotCardProps> = ({
   shot,
   globalMedium,
   isCopied,
-  isReRolling,
   isPayloadCollapsed,
-  noteValue,
-  onNoteChange,
-  onReroll,
   onCopy,
   onToggleCollapse
 }) => {
-  const shotStyle = (shot as any).style || (shot as any).director_persona || ((shot as any).visual_intent ? 'SOTA Shot' : 'Auteur');
+  const shotStyle =
+    (shot as any).style ||
+    (shot as any).director_persona ||
+    ((shot as any).visual_intent ? 'SOTA Shot' : 'Auteur');
   const shotTxt = (shot as any).visual_intent || (shot as any).txt || '';
-  const shotPrmpt = (shot as any).sota_payload || (shot as any).prmpt || (shot as any).ai_payload || '';
+  const shotPrmpt =
+    (shot as any).sota_payload || (shot as any).prmpt || (shot as any).ai_payload || '';
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 transition-all hover:border-slate-700 shadow-md">
+    <div className="bg-neutral-950 border border-neutral-800 rounded p-5 transition-all">
       {/* Shot Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 border-b border-neutral-800 pb-3">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+          <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-neutral-900 text-white border border-neutral-800">
             {shotKey}
           </span>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono">
+          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-neutral-900 text-neutral-300 border border-neutral-800">
             {shotStyle}
           </span>
         </div>
 
-        {/* Neon Accented COPY FOR KLING/RUNWAY Button */}
+        {/* The ONLY button allowed on a Shot Card: Copy AI Payload */}
         <button
           onClick={() => onCopy(shotPrmpt)}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded text-xs font-bold tracking-wide uppercase transition-all shadow-md font-mono ${
+          className={`px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border ${
             isCopied
-              ? 'bg-emerald-400 text-slate-950 shadow-emerald-400/30 scale-95'
-              : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20 hover:scale-[1.02]'
+              ? 'bg-white text-black border-white'
+              : 'bg-neutral-900 hover:bg-white hover:text-black text-neutral-200 border-neutral-700'
           }`}
         >
-          <span>{isCopied ? '✓ COPIED!' : 'COPY FOR KLING/RUNWAY'}</span>
+          {isCopied ? 'COPIED' : 'COPY AI PAYLOAD'}
         </button>
       </div>
 
-      {/* Visual Intent (Serif Typography for Director Screenplay Feel) */}
+      {/* Visual Intent (High-End Serif Typography for Screenplay Feel) */}
       <div className="mb-4">
-        <span className="text-[11px] font-mono text-slate-500 uppercase tracking-wider block mb-1.5">
-          Visual Intent
+        <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block mb-1.5">
+          SHOT VISUAL INTENT
         </span>
-        <blockquote className="font-serif text-base italic leading-relaxed text-slate-200 tracking-wide border-l-2 border-emerald-500/60 pl-3 py-0.5">
+        <blockquote className="font-serif text-base italic leading-relaxed text-neutral-100 border-l border-neutral-700 pl-3.5 py-0.5">
           "{shotTxt}"
         </blockquote>
       </div>
 
-      {/* AI Payload (Collapsible Terminal-Style Code Block) */}
-      <div className="mb-4">
+      {/* AI Video Diffusion Payload (Collapsible Monospaced Block) */}
+      <div>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-mono text-slate-500 uppercase tracking-wider">
-            AI Video Diffusion Payload (Style-Agnostic)
+          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
+            AI VIDEO DIFFUSION PAYLOAD (SOTA COMPILATION)
           </span>
           <button
             onClick={onToggleCollapse}
-            className="text-[11px] font-mono text-slate-400 hover:text-slate-200 transition-colors"
+            className="text-[10px] font-mono text-neutral-400 hover:text-white transition-colors"
           >
-            {isPayloadCollapsed ? 'Expand [▼]' : 'Collapse [▲]'}
+            {isPayloadCollapsed ? '[EXPAND]' : '[COLLAPSE]'}
           </button>
         </div>
 
         {!isPayloadCollapsed && (
-          <div className="bg-black/90 border border-slate-800 rounded p-3 font-mono text-xs text-emerald-400/90 leading-relaxed overflow-x-auto shadow-inner">
-            <span className="text-slate-500 select-none mr-2">$</span>
-            <span className="text-emerald-300 font-semibold select-none">
-              [{globalMedium}]{' '}
-            </span>
+          <div className="bg-black border border-neutral-800 rounded p-3 font-mono text-xs text-neutral-300 leading-relaxed overflow-x-auto">
+            <span className="text-neutral-500 select-none mr-2">$</span>
+            <span className="text-white font-semibold select-none">[{globalMedium}] </span>
             <span>{shotPrmpt}</span>
           </div>
         )}
-      </div>
-
-      {/* Directorial Note Re-Roll Trigger */}
-      <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2">
-        <input
-          type="text"
-          placeholder="Directorial note (e.g., tighter on eyes, make lighting harsher)..."
-          value={noteValue}
-          onChange={(e) => onNoteChange(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onReroll()}
-          disabled={isReRolling}
-          className="flex-1 bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans"
-        />
-        <button
-          onClick={onReroll}
-          disabled={isReRolling || !noteValue.trim()}
-          className="px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-xs font-semibold text-slate-200 transition-colors font-mono"
-        >
-          {isReRolling ? 'Re-Rolling...' : 'Re-Roll Shot'}
-        </button>
       </div>
     </div>
   );
