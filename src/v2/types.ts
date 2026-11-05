@@ -104,29 +104,77 @@ export const ScriptOptionSchema = z.object({
 });
 
 export type LockedScript = ScriptPitch | ScriptOption;
-export type LockedShot = ShotPitch | ShotOption;
+export type LockedShot = ShotPitch | ShotOption | ShotNode;
 
+// Forward declaration support: AnyLockedShotSchema defined below after ShotNodeSchema
 export const AnyLockedScriptSchema = z.union([ScriptPitchSchema, ScriptOptionSchema]);
-export const AnyLockedShotSchema = z.union([ShotPitchSchema, ShotOptionSchema]);
+
+// ============================================================================
+// SOTA DP Suite Interfaces (Deferred Payload & Temporal Ingress/Egress)
+// ============================================================================
+
+export interface ShotNode {
+  id?: string;
+  style?: string;
+  visual_intent: string; // From Tool A (pitch_shot_concepts)
+  sota_payload: string; // From Tool B (compile_sota_prompt)
+}
+
+export const ShotNodeSchema = z.union([
+  z.object({
+    id: z.string().optional(),
+    style: z.string().optional(),
+    visual_intent: z.string().default(''),
+    sota_payload: z.string().default('')
+  }),
+  z.object({
+    locked_shot: z.any()
+  }).transform((obj) => ({
+    id: obj.locked_shot?.id || obj.locked_shot?.option_id,
+    style: obj.locked_shot?.style || obj.locked_shot?.director_persona,
+    visual_intent: obj.locked_shot?.visual_intent || obj.locked_shot?.txt || '',
+    sota_payload: obj.locked_shot?.sota_payload || obj.locked_shot?.prmpt || obj.locked_shot?.ai_payload || ''
+  }))
+]);
+
+export const AnyLockedShotSchema = z.union([ShotPitchSchema, ShotOptionSchema, ShotNodeSchema]);
+
+export interface ShotConcept {
+  option: '1' | '2' | '3';
+  persona: 'Auteur' | 'Kinetic' | 'Theatrical';
+  visual_intent: string;
+}
+
+export const ShotConceptSchema = z.object({
+  option: z.enum(['1', '2', '3']),
+  persona: z.enum(['Auteur', 'Kinetic', 'Theatrical']),
+  visual_intent: z.string().min(1)
+});
+
+export interface ShotConceptsPitch {
+  scene_id: string;
+  shot_id: string;
+  concepts: Record<'1' | '2' | '3', ShotConcept>;
+  spatial_memory: string[];
+  last_shot_egress: string;
+}
 
 export interface Scene {
   scene_id: string;
-  locked_script: LockedScript | null;
+  locked_script?: LockedScript | null;
   active_refs?: string[]; // e.g., ["@CHAR_01", "@BG_02"]
-  spatial_memory?: string[]; // Compressed rolling array of physical facts (e.g., ["Sharma is seated at table 4", "Phone is on table"])
-  shots: Record<string, { locked_shot: LockedShot | null }>; // Sequential spatial memory
+  spatial_memory: string[]; // Auto-updates with physical facts
+  last_shot_egress: string; // E.g., "Hand rests on table" - passes to the next shot's Ingress
+  shots: Record<string, ShotNode>;
 }
 
 export const SceneSchema = z.object({
   scene_id: z.string().min(1),
-  locked_script: AnyLockedScriptSchema.nullable(),
+  locked_script: AnyLockedScriptSchema.nullable().default(null),
   active_refs: z.array(z.string()).default([]),
   spatial_memory: z.array(z.string()).default([]),
-  shots: z.record(
-    z.object({
-      locked_shot: AnyLockedShotSchema.nullable()
-    })
-  )
+  last_shot_egress: z.string().default(''),
+  shots: z.record(ShotNodeSchema).default({})
 });
 
 export interface NogyaanState {

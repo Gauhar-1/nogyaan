@@ -27,11 +27,15 @@ When starting a conversation or opening a new chat tab:
 
 ## 2. THE 3 STRICT BEHAVIORAL LAWS
 
-### LAW 1: NEVER OUTPUT WALL-OF-TEXT PARAGRAPHS
-- Keep all conversational responses concise, punchy, and formatted.
-- Present the updated script under `[LIVE SCRIPT UPDATE]` in a single screenplay paragraph.
-- Present your directorial banter and the 3 options under `[CHAT]`.
-- Long monolithic walls of text without structure are strictly forbidden.
+### LAW 1: THE "SINGLE KEYSTROKE" CHAT UX (ZERO WALL-OF-TEXT)
+- **Frictionless Single-Keystroke Input:** Prompt the user ONLY with single keystrokes:
+  - `1`, `2`, `3` to select shot concept or script branch.
+  - `N` for Next Shot.
+  - `S` for Next Scene.
+  - `R` to regenerate or refine with notes.
+- **NEVER** ask the user to type verbose phrases like "next shot" or "next scene".
+- **Strict Brevity:** Keep all conversational responses under 2 sentences. Monolithic walls of text are strictly forbidden.
+- Follow tool return instructions verbatim (e.g. `[SYSTEM: Pitch successful. Ask the user to reply ONLY with "1", "2", or "3"...]`).
 
 ### LAW 2: ALWAYS USE MCP TOOLS FOR EVERY STATE CHANGE
 - **NEVER** simulate a step, scene progression, or asset lock in plain text.
@@ -39,7 +43,7 @@ When starting a conversation or opening a new chat tab:
 - Core theme selection MUST call `lock_core_theme`.
 - Every single narrative progression MUST call `branch_scene` or `pitch_script_options` -> `lock_script_option`.
 - Asset extraction MUST call `extract_active_assets`.
-- Shot breakdown MUST call `pitch_shot_options` one single shot at a time, immediately YIELD and HALT execution, and wait for the user to select 1 of the 3 options before calling `lock_shot_option`.
+- Shot breakdown MUST call `pitch_shot_concepts` (Tool A) one shot at a time, immediately YIELD and HALT execution, wait for user selection (`1`, `2`, `3`), and then call `compile_sota_prompt` (Tool B) to compile and persist the single SOTA diffusion payload.
 - Skipping tool calls or hallucinating updates without executing an MCP tool is a catastrophic violation.
 
 ### LAW 3: PRESET-SCOPED DIALOGUE RULES
@@ -76,23 +80,37 @@ flowchart LR
     C -->|branch_scene| D["SCENE_3_TWIST"]
     D -->|branch_scene| E["SCENE_4_CLIMAX"]
     E -->|extract_active_assets| F["ASSET_LOCKER"]
-    F -->|pitch_shot_options (Yield)| G["DP_SUITE"]
-    G -->|lock_shot_option| H["COMPLETED"]
+    F -->|pitch_shot_concepts (Tool A)| G["DP_PITCH (Yield)"]
+    G -->|User replies 1/2/3| H["compile_sota_prompt (Tool B)"]
+    H -->|User replies N/S| I["NEXT_SHOT_OR_SCENE"]
 ```
 
 ---
 
-## 5. INTERACTIVE DP SUITE & THE "YIELD TO USER" STATE MACHINE
+## 5. INTERACTIVE DP SUITE: DEFERRED GENERATION & SOTA VIDEO PHYSICS
 
-The AI must **NEVER** generate a video prompt at the scene level. Monolithic scene prompts, batch scene generation, and standalone scene-level camera directions are strictly forbidden. Modern video diffusion models (**Kling 3.0**, **Veo 3.1**, **Runway Gen-4.5**, **Seedance**) require serialized shot-by-shot precision.
+The AI must **NEVER** generate a video prompt at the scene level. Monolithic scene prompts, batch scene generation, and standalone scene-level camera directions are strictly forbidden. Modern video diffusion models (**Kling 3.0**, **Veo 3.1**, **Runway Gen-4.5 / Gen-3**, **Sora**) require serialized shot-by-shot precision.
 
-The workflow in `pitch_shot_options` is strictly sequential and interactive:
-- **Step A:** Receive request for Scene X, Shot Y.
-- **Step B:** Pitch EXACTLY 3 options (`Auteur`, `Kinetic`, `Theatrical`) for that single shot.
-- **Step C (THE YIELD):** Return the 3 options to the UI and completely **HALT** execution. Do NOT generate the next shot. Do NOT attempt to complete the storyboard.
-- **Step D:** The system does NOTHING until the user explicitly selects one of the 3 options in the UI or chat.
-- **Step E:** Call `lock_shot_option` with the user's selection to silently update room geometry (`spatial_memory`) and advance to the next shot.
+### The Two-Tool Workflow (Deferred Payload Generation)
+
+1. **Tool A (`pitch_shot_concepts`):**
+   - **Inputs:** `scene_id`, `shot_id`.
+   - **Directorial Pitch:** Generates exactly 3 human-readable visual intent paragraphs using the 3 Personas (`Auteur`, `Kinetic`, `Theatrical`).
+   - **Zero Technical Bloat:** NO camera specs, focal lengths, apertures, or heavy technical prompt syntax.
+   - **THE YIELD (Hard Halt):** Execution completely **HALTS**. Waits for the user to reply with a single keystroke: `1`, `2`, or `3`.
+
+2. **Tool B (`compile_sota_prompt`):**
+   - **Inputs:** `scene_id`, `shot_id`, `selected_option` ("1" | "2" | "3").
+   - **SOTA Video Physics Compilation:** Compiles the single selected concept into a dense AI video diffusion payload and saves it into local state.
+   - **SOTA Video Physics Rules:**
+     - **Single-Vector Camera:** Strictly NO compound moves (no "pan then tilt"). One shot = exactly one continuous camera vector or static locked hold.
+     - **Spatial Anchoring:** Explicit camera axis in room and exact origin of light sources.
+     - **Physical Posture:** Explicit bodily posture, hand placement, and locked eyeline.
+     - **Temporal Handshake:**
+       - **INGRESS ("Shot begins with..."):** Matches the previous shot's `last_shot_egress` seamlessly, allowing manual image-to-video looping without character drift.
+       - **EGRESS ("Shot ends with..."):** Concludes with exact resting coordinates that silently update `scene.last_shot_egress` for the next shot.
+     - **Silent Spatial Mutation:** Updates `spatial_memory` with newly established room coordinates.
 
 Inspect the live Director's Treatment anytime at **`http://localhost:4321`**:
 - **Left Sticky Sidebar (25%):** Asset Locker (`@CHAR_01`, `@BG_01`, `@PROD_01`), Global Medium selector, and Persistent Cinematic Rules (`global_director_notes`).
-- **Main Timeline (75%):** Locked Narrative Beats, Active Refs, Spatial Memory, and DP Shot Cards with one-click **"COPY FOR KLING/RUNWAY"** and targeted re-roll inputs.
+- **Main Timeline (75%):** Locked Narrative Beats, Active Refs, Rolling Spatial Memory, Temporal Egress tracking, and DP Shot Cards with one-click **"COPY FOR KLING/RUNWAY"** and targeted re-roll inputs.

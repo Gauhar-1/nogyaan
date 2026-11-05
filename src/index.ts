@@ -243,7 +243,47 @@ function startStudioServer(port: number = 4321): void {
       return;
     }
 
-    // 7. Pitch Shot Options (POST /api/v2/pitch-shot)
+    // 7. Pitch Shot Concepts (POST /api/v2/pitch-shot-concepts)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/pitch-shot-concepts') {
+      parseJsonBody(req)
+        .then(async (body) => {
+          try {
+            const pitch = await dpPitch.pitchShotConcepts(body);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ success: true, ...pitch }));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 7.5. Compile SOTA Prompt (POST /api/v2/compile-sota-prompt)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/compile-sota-prompt') {
+      parseJsonBody(req)
+        .then(async (body) => {
+          try {
+            const result = await dpPitch.compileSotaPrompt(body);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(result));
+          } catch (err: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        })
+        .catch((err) => {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
+      return;
+    }
+
+    // 7.8. Pitch Shot Options (POST /api/v2/pitch-shot - Legacy Wrapper)
     if (req.method === 'POST' && parsedUrl.pathname === '/api/v2/pitch-shot') {
       parseJsonBody(req)
         .then(async (body) => {

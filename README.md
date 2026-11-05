@@ -127,12 +127,15 @@ node dist/cli.js doctor
 | `branch_scene` | Narrative (`SCENE_1_SETUP` – `SCENE_4_CLIMAX`) | `session_id`, `action`, `scene_number`, `chosen_option_id`, `exit_frame_anchor`, `nextOptions` | Commits physical scene (`1`, `2`, `3`) or regenerates (`R`), wipes pruned branches, and enforces physical continuity bridges. |
 | `lock_assets` | `LOCK_ASSETS` (after Scene 4) | `session_id`, `characters` (`CHAR_01..N`), `environments` (`BG_01..N`), `product` (`PROD_01`) | Locks canonical visual asset references and generates Midjourney / Flux reference prompts. |
 | `extract_active_assets` | Post-Script | None | Analyzes locked 4-scene narrative to extract the AssetBible and tag active refs (`@CHAR_01`, `@BG_01`, `@PROD_01`) per scene. |
-| `pitch_shot_options` | DP Suite | `scene_id`, `shot_id` | Pitches exactly 3 options (Auteur, Kinetic, Theatrical) for a single shot and completely HALTS execution to yield to the user. |
-| `lock_shot_option` | DP Suite | `scene_id`, `shot_id`, `shot`, `spatial_facts` | Locks selected shot option into state, silently updating rolling spatial room geometry. |
+| `pitch_shot_concepts` | DP Suite (Tool A) | `scene_id`, `shot_id` | Pitches exactly 3 human-readable visual intent concepts (Auteur, Kinetic, Theatrical) with zero camera bloat, and completely HALTS execution for user choice (`1`, `2`, `3`). |
+| `compile_sota_prompt` | DP Suite (Tool B) | `scene_id`, `shot_id`, `selected_option` ("1" \| "2" \| "3") | Compiles the selected concept into a single dense technical AI video diffusion payload with single-vector camera, spatial light anchoring, and temporal INGRESS/EGRESS handshake for image-to-video looping. |
+| `pitch_shot_options` | DP Suite | `scene_id`, `shot_id` | (Backward-compatible) Pitches 3 shot options and completely HALTS execution to yield to the user. |
+| `lock_shot_option` | DP Suite | `scene_id`, `shot_id`, `shot`, `spatial_facts` | (Backward-compatible) Locks selected shot option into state, silently updating rolling spatial room geometry. |
+| `reroll_node` | Post-Pitch | `node_id`, `user_feedback` | Targeted single-node re-roll without modifying untouched scenes or burning extra tokens. |
 
 ---
 
-## 💬 Usage Flow in Claude
+## 💬 Usage Flow in Claude (Single-Keystroke Frictionless Chat)
 
 1. **Start a new ad session**:
    ```text
@@ -141,8 +144,8 @@ node dist/cli.js doctor
    ad_goal: Reconnect busy corporate workers with afternoon family tea rituals
    ```
 
-2. **Lock core theme & branch physical scenes**:
-   Claude proposes 3 Core Campaign Premise options. Once locked via `lock_core_theme`, Claude steps through Scene 1 to Scene 4 via `branch_scene` (1/2/3/R).
+2. **Lock core theme & branch physical scenes (`1`, `2`, `3`, `R`)**:
+   Claude proposes 3 Core Campaign Premise options. Once locked via `lock_core_theme`, Claude steps through Scene 1 to Scene 4 via `branch_scene` with frictionless single-keystroke inputs.
    ```text
    Reply: 1
    ```
@@ -150,8 +153,10 @@ node dist/cli.js doctor
 3. **Lock continuity and assets**:
    After Scene 4 Climax, Claude extracts and locks visual assets (`@CHAR_01`, `@BG_01`, `@PROD_01`).
 
-4. **Interactive DP Pitches & The Director's Treatment**:
-   Claude pitches 3 distinct optical treatments per shot via `pitch_shot_options` (Auteur, Kinetic, Theatrical), halts execution, and waits for user selection before locking via `lock_shot_option`. Review the unified Director's Treatment on **`http://localhost:4321`** with live SSE sync and one-click copy for Kling, Runway, and Veo.
+4. **Deferred DP Suite & Temporal Handshake (`pitch_shot_concepts` & `compile_sota_prompt`)**:
+   - **Step A:** Claude calls `pitch_shot_concepts` (Tool A) and halts. Reply `1`, `2`, or `3`.
+   - **Step B:** Claude calls `compile_sota_prompt` (Tool B). The technical prompt is compiled with strict single-vector camera moves and an **INGRESS / EGRESS temporal handshake**. The end state (`last_shot_egress`) of Shot 1 matches the start state of Shot 2, enabling seamless image-to-video looping in Kling, Runway, and Veo.
+   - **Step C:** Reply `N` for Next Shot or `S` for Next Scene. Review everything live on **`http://localhost:4321`**.
 
 ---
 

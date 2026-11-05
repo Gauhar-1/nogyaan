@@ -505,6 +505,18 @@ const SceneSection: React.FC<SceneSectionProps> = ({
             </div>
           )}
 
+          {/* Temporal Handshake (Last Shot Egress) */}
+          {scene.last_shot_egress && (
+            <div className="pt-3 border-t border-slate-800/80 flex flex-col gap-1.5 mb-3">
+              <span className="text-[11px] font-mono text-cyan-400 uppercase tracking-wider font-semibold">
+                Temporal Handshake (Last Shot Egress):
+              </span>
+              <span className="text-xs text-cyan-200 font-sans italic bg-cyan-950/40 border border-cyan-800/50 rounded px-2.5 py-1">
+                🔗 {scene.last_shot_egress}
+              </span>
+            </div>
+          )}
+
           {/* Script Re-roll Note */}
           <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center gap-2">
             <input
@@ -540,13 +552,13 @@ const SceneSection: React.FC<SceneSectionProps> = ({
 
         {shotEntries.length === 0 ? (
           <p className="text-xs italic text-slate-500 py-3">
-            No shots pitched yet for this scene. Call <code className="text-emerald-400 font-mono">pitch_shot_options</code> to generate 3 treatments.
+            No shots pitched yet for this scene. Call <code className="text-emerald-400 font-mono">pitch_shot_concepts</code> to generate 3 concepts.
           </p>
         ) : (
           <div className="space-y-6">
             {shotEntries.map(([shotKey, shotVal]) => {
-              const lockedShot = shotVal.locked_shot;
-              if (!lockedShot) return null;
+              const lockedShot = (shotVal as any).locked_shot || shotVal;
+              if (!lockedShot || (!lockedShot.visual_intent && !lockedShot.txt && !lockedShot.sota_payload && !lockedShot.prmpt)) return null;
               const nodeIdentifier = `${scene_id}:${shotKey}`;
               const sId = (lockedShot as any).id || (lockedShot as any).option_id || shotKey;
 
@@ -607,9 +619,9 @@ const ShotCard: React.FC<ShotCardProps> = ({
   onCopy,
   onToggleCollapse
 }) => {
-  const shotStyle = (shot as any).style || (shot as any).director_persona || 'Auteur';
-  const shotTxt = (shot as any).txt || (shot as any).visual_intent || '';
-  const shotPrmpt = (shot as any).prmpt || (shot as any).ai_payload || '';
+  const shotStyle = (shot as any).style || (shot as any).director_persona || ((shot as any).visual_intent ? 'SOTA Shot' : 'Auteur');
+  const shotTxt = (shot as any).visual_intent || (shot as any).txt || '';
+  const shotPrmpt = (shot as any).sota_payload || (shot as any).prmpt || (shot as any).ai_payload || '';
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 transition-all hover:border-slate-700 shadow-md">

@@ -270,6 +270,62 @@ export function registerMcpTools(
           }
         },
         {
+          name: 'pitch_shot_concepts',
+          description:
+            'Tool A (DP Suite): Pitches exactly 3 human-readable visual intent concepts (1: Auteur, 2: Kinetic, 3: Theatrical) for a single shot without technical camera data or JSON bloat, then HALTS to yield to user keystroke selection (1, 2, or 3).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scene_id: {
+                type: 'string',
+                description: 'Scene ID (e.g. "SCENE_01")'
+              },
+              shot_id: {
+                type: 'string',
+                description: 'Optional shot identifier (e.g. "SHOT_01" or defaults to next shot in sequence)'
+              },
+              spatial_memory: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional rolling physical room geometry facts'
+              }
+            },
+            required: ['scene_id']
+          }
+        },
+        {
+          name: 'compile_sota_prompt',
+          description:
+            'Tool B (DP Suite): Compiles the user\'s selected shot concept (1, 2, or 3) into a single, dense technical AI video diffusion payload for SOTA models (Kling, Runway, Sora) with single-vector camera, spatial anchoring, posture/eyeline, and temporal ingress/egress handshakes, then saves to local JSON state.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scene_id: {
+                type: 'string',
+                description: 'Scene ID (e.g. "SCENE_01")'
+              },
+              selected_option: {
+                type: 'string',
+                description: 'The selected shot option ("1", "2", "3", or visual intent description)'
+              },
+              shot_id: {
+                type: 'string',
+                description: 'Optional shot identifier (e.g. "SHOT_01")'
+              },
+              spatial_memory: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional rolling physical room geometry facts'
+              },
+              last_shot_egress: {
+                type: 'string',
+                description: 'Optional egress of preceding shot to establish temporal ingress handshake'
+              }
+            },
+            required: ['scene_id', 'selected_option']
+          }
+        },
+        {
           name: 'pitch_shot_options',
           description:
             'Phase 3 DP Suite: Strictly sequential shot-by-shot pitch. Receives Scene X, Shot Y, pitches EXACTLY 3 options (Auteur, Kinetic, Theatrical) for that single shot, and completely HALTS execution to yield to the user. The AI must STOP and do nothing until the user explicitly selects one of the 3 options in the UI.',
@@ -439,6 +495,9 @@ export function registerMcpTools(
           `* **Language Rule:** ${preset.dialogueLanguageRule}\n` +
           `* **Session ID:** ${session.sessionId}`;
 
+        const systemMsg =
+          '[SYSTEM: Brief initialized. Propose 3 distinct Core Campaign Premise options. Ask the user to reply ONLY with "1", "2", or "3" (or "R" to regenerate). Keep your response under 2 sentences.]';
+
         const result = {
           success: true,
           message: `Brand brief locked into isolated session ${session.sessionId}. State initialized to CORE_THEME.`,
@@ -448,16 +507,21 @@ export function registerMcpTools(
           storagePath: `${sessionService.getSessionsDir()}/${session.sessionId}.json`,
           lockedBrief,
           preset,
+          system_instruction: systemMsg,
           _systemDirective: {
-            instruction:
-              'Present 3 distinct Core Campaign Premise options for the brand friction. When user selects 1, 2, or 3, call "lock_core_theme".',
+            instruction: systemMsg,
             languageRule: preset.dialogueLanguageRule,
             endingRule: "End your response STRICTLY with: 'Reply 1, 2, 3, or R (regenerate).'"
           }
         };
 
         return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+          content: [
+            {
+              type: 'text',
+              text: `${systemMsg}\n\n${JSON.stringify(result, null, 2)}`
+            }
+          ]
         };
       }
 
@@ -470,8 +534,16 @@ export function registerMcpTools(
           nextOptions: input.nextOptions
         });
 
+        const systemMsg =
+          '[SYSTEM: Core theme locked. Propose 3 opening scenarios for Scene 1. Ask the user to reply ONLY with "1", "2", or "3" (or "R" to regenerate). Keep your response under 2 sentences.]';
+
         return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+          content: [
+            {
+              type: 'text',
+              text: `${systemMsg}\n\n${JSON.stringify({ ...result, system_instruction: systemMsg }, null, 2)}`
+            }
+          ]
         };
       }
 
@@ -502,15 +574,21 @@ export function registerMcpTools(
           presetLanguageRule: languageRule
         });
 
+        const isComplete = branchResult.session.stage === 'LOCK_ASSETS';
+        const systemMsg = isComplete
+          ? '[SYSTEM: Scene 4 Climax locked. Call "extract_active_assets" to extract visual assets and tag scenes. Tell the user to type "N" to begin shot visual concepts. Keep your response under 2 sentences.]'
+          : `[SYSTEM: Scene ${input.scene_number || 1} locked. Propose 3 options for the next beat. Ask the user to reply ONLY with "1", "2", or "3" (or "R" to regenerate). Keep your response under 2 sentences.]`;
+
         const outputData = {
           success: true,
           sessionId: branchResult.session.sessionId,
           currentStage: branchResult.session.stage,
           prunedCount: branchResult.session.prunedCount,
-          isNarrativeComplete: branchResult.session.stage === 'LOCK_ASSETS',
+          isNarrativeComplete: isComplete,
           lockedNodes: branchResult.session.lockedNodes,
           continuityBridge: branchResult.continuityBridge,
           dialogueLanguageRule: languageRule,
+          system_instruction: systemMsg,
           _systemDirective: branchResult.directive
         };
 
@@ -520,7 +598,7 @@ export function registerMcpTools(
         }
 
         return {
-          content: [{ type: 'text', text: formattedText }]
+          content: [{ type: 'text', text: `${systemMsg}\n\n${formattedText}` }]
         };
       }
 
@@ -537,17 +615,21 @@ export function registerMcpTools(
           presetLanguageRule: languageRule
         });
 
+        const systemMsg =
+          '[SYSTEM: Assets locked. Call "pitch_shot_concepts" for Scene 1 Shot 1. Ask the user to type "N" to begin shot visual concepts. Keep your response under 2 sentences.]';
+
         const outputData = {
           success: true,
           sessionId: result.session.sessionId,
           currentStage: result.session.stage,
           lockedAssets: result.session.assets,
           dialogueLanguageRule: languageRule,
+          system_instruction: systemMsg,
           _systemDirective: result.directive
         };
 
         return {
-          content: [{ type: 'text', text: JSON.stringify(outputData, null, 2) }]
+          content: [{ type: 'text', text: `${systemMsg}\n\n${JSON.stringify(outputData, null, 2)}` }]
         };
       }
 
@@ -556,24 +638,28 @@ export function registerMcpTools(
           scene_id: input.scene_id,
           user_guidance: input.user_guidance
         });
+
+        const systemMsg =
+          `[SYSTEM: Script pitched for ${input.scene_id}. Ask the user to reply ONLY with "1", "2", or "3" to select their script (or "R" to regenerate). Keep your response under 2 sentences.]`;
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(
+              text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   success: true,
                   scene_id: input.scene_id,
                   pitches: options,
+                  system_instruction: systemMsg,
                   _systemDirective: {
-                    instruction:
-                      'Present these 3 distinct narrative paths to the user (Heartfelt, Viral, Offbeat). Once selected, call "lock_script_option".',
-                    endingRule: "End response with: 'Select Option A, B, or C or request guidance.'"
+                    instruction: systemMsg,
+                    endingRule: "End response with: 'Select Option 1, 2, or 3 (or R to regenerate).'"
                   }
                 },
                 null,
                 2
-              )
+              )}`
             }
           ]
         };
@@ -593,27 +679,31 @@ export function registerMcpTools(
           throw new Error('Script object is required to lock script option.');
         }
         const updatedState = stateManager.lockScript(input.scene_id, scriptToLock);
+
+        const allLocked = updatedState.scenes.length >= 4 && updatedState.scenes.every((s) => s.locked_script);
+        const systemMsg = allLocked
+          ? '[SYSTEM: All 4 scenes locked! Call "extract_active_assets" to tag scene-level assets. Tell user to type "N" to proceed. Keep your response under 2 sentences.]'
+          : `[SYSTEM: Script option locked for ${input.scene_id}. Ask the user to type "N" for Next Scene or "S" to review the treatment. Keep your response under 2 sentences.]`;
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(
+              text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   success: true,
                   message: `Script option locked for ${input.scene_id}.`,
                   scene_id: input.scene_id,
                   locked_script: scriptToLock,
                   state: updatedState,
+                  system_instruction: systemMsg,
                   _systemDirective: {
-                    instruction:
-                      updatedState.scenes.length >= 4 && updatedState.scenes.every((s) => s.locked_script)
-                        ? 'All 4 scenes locked! Trigger "extract_active_assets" to tag scene-level assets before moving to the DP Suite.'
-                        : `Script for ${input.scene_id} is locked. Proceed to next scene or call extract_active_assets when all 4 scenes are locked.`
+                    instruction: systemMsg
                   }
                 },
                 null,
                 2
-              )
+              )}`
             }
           ]
         };
@@ -621,64 +711,149 @@ export function registerMcpTools(
 
       if (name === 'extract_active_assets') {
         const result = await assetLocker.extractActiveAssets();
+        const systemMsg =
+          '[SYSTEM: Assets locked and tagged across all scenes. Call "pitch_shot_concepts" for Scene 1 Shot 1. Ask the user to type "N" to begin shot visual concepts. Keep your response under 2 sentences.]';
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(
+              text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   success: true,
                   message: 'Asset Bible extracted and active_refs tagged for all scenes.',
                   extraction: result.extraction,
                   state: result.state,
+                  system_instruction: systemMsg,
                   _systemDirective: {
-                    instruction:
-                      'Active asset references tagged across all scenes. Now call "pitch_shot_options" for Scene 1 Shot 1.'
+                    instruction: systemMsg
                   }
                 },
                 null,
                 2
-              )
+              )}`
+            }
+          ]
+        };
+      }
+
+      // ======================================================================
+      // Tool A: pitch_shot_concepts (Deferred Payload Generation)
+      // Generates 3 human-readable visual intent paragraphs (1, 2, 3).
+      // Zero technical camera data. Halts and yields for user selection.
+      // ======================================================================
+      if (name === 'pitch_shot_concepts') {
+        const result = await dpPitch.pitchShotConcepts({
+          scene_id: input.scene_id,
+          shot_id: input.shot_id,
+          spatial_memory: input.spatial_memory
+        });
+
+        const systemMsg =
+          '[SYSTEM: Pitch successful. Ask the user to reply ONLY with "1", "2", or "3" to select their shot. If they want to move on, tell them to type "N" for Next Shot or "S" for Next Scene. Keep your response under 2 sentences.]';
+
+        const outputData = {
+          status: 'YIELD_TO_USER',
+          action_required: 'USER_SELECTION',
+          message: `Pitched 3 visual concepts for ${result.scene_id} ${result.shot_id}. Execution halted. Waiting for user to select 1, 2, or 3.`,
+          scene_id: result.scene_id,
+          shot_id: result.shot_id,
+          concepts: result.concepts,
+          spatial_memory: result.spatial_memory,
+          last_shot_egress: result.last_shot_egress,
+          system_instruction: systemMsg,
+          _systemDirective: {
+            directive: 'HARD_STOP_YIELD_TO_USER',
+            instruction: systemMsg
+          }
+        };
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `${systemMsg}\n\n${JSON.stringify(outputData, null, 2)}`
+            }
+          ]
+        };
+      }
+
+      // ======================================================================
+      // Tool B: compile_sota_prompt (SOTA Video Physics & Ingress/Egress)
+      // Single-vector camera, spatial anchoring, posture & eyeline, and temporal handshake.
+      // Saves directly to local JSON state.
+      // ======================================================================
+      if (name === 'compile_sota_prompt') {
+        const result = await dpPitch.compileSotaPrompt({
+          scene_id: input.scene_id,
+          shot_id: input.shot_id,
+          selected_option: input.selected_option || input.option || '1',
+          spatial_memory: input.spatial_memory,
+          last_shot_egress: input.last_shot_egress
+        });
+
+        const systemMsg =
+          '[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
+
+        const outputData = {
+          success: true,
+          message: `SOTA AI prompt compiled and saved for ${result.scene_id} -> ${result.shot_id}. Temporal egress updated.`,
+          scene_id: result.scene_id,
+          shot_id: result.shot_id,
+          shot: result.shot,
+          last_shot_egress: result.last_shot_egress,
+          spatial_memory: result.spatial_memory,
+          system_instruction: systemMsg,
+          _systemDirective: {
+            instruction: systemMsg
+          }
+        };
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `${systemMsg}\n\n${JSON.stringify(outputData, null, 2)}`
             }
           ]
         };
       }
 
       if (name === 'pitch_shot_options') {
-        // Step A: Tool receives request for Scene X, Shot Y
+        // Backward-compatible wrapper
         const options = await dpPitch.pitchShotOptions({
           scene_id: input.scene_id,
           shot_id: input.shot_id
         });
 
-        // Step B: Generated EXACTLY 3 options (Auteur, Kinetic, Theatrical) for that single shot
-        // Step C (THE YIELD): Return these 3 options to the UI/MCP and completely HALT execution.
-        // Step D: System does NOTHING until the user explicitly selects one of the 3 options.
+        const systemMsg =
+          '[SYSTEM: Pitch successful. Ask the user to reply ONLY with "1", "2", or "3" to select their shot. If they want to move on, tell them to type "N" for Next Shot or "S" for Next Scene. Keep your response under 2 sentences.]';
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(
+              text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   status: 'YIELD_TO_USER',
                   action_required: 'USER_SELECTION',
-                  message: `Pitched 3 options for ${input.scene_id} ${input.shot_id}. Execution halted. Waiting for user to select 1 option before proceeding.`,
+                  message: `Pitched 3 options for ${input.scene_id} ${input.shot_id || 'SHOT_01'}. Execution halted. Waiting for user to select 1 option before proceeding.`,
                   scene_id: input.scene_id,
-                  shot_id: input.shot_id,
+                  shot_id: input.shot_id || 'SHOT_01',
                   pitches: options,
                   options: options,
+                  system_instruction: systemMsg,
                   _systemDirective: {
                     directive: 'HARD_STOP_YIELD_TO_USER',
                     instruction:
                       'CRITICAL: You are an interactive DP. You must only pitch 3 options for the CURRENT single shot. Do NOT generate the next shot. Do NOT generate a prompt for the whole scene. Output the 3 options as JSON, then STOP and wait for the user\'s selection. Do not attempt to complete the storyboard.',
-                    workflow:
-                      '1. Display the 3 pitched treatments (A: Auteur, B: Kinetic, C: Theatrical) to the user. 2. Completely HALT execution. Do NOT call pitch_shot_options for the next shot. Do NOT proceed. 3. Wait for the user to explicitly select an option in the UI or chat. 4. Only after the user selects, call lock_shot_option.',
-                    endingRule: 'Select Treatment A, B, or C or request targeted camera adjustments before moving to the next shot.'
+                    workflow: systemMsg,
+                    endingRule: 'Select Treatment 1, 2, or 3 or request targeted camera adjustments before moving to the next shot.'
                   }
                 },
                 null,
                 2
-              )
+              )}`
             }
           ]
         };
@@ -696,11 +871,15 @@ export function registerMcpTools(
           shotToLock,
           spatialFacts
         );
+
+        const systemMsg =
+          '[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(
+              text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   success: true,
                   message: `Shot option locked for ${input.scene_id} -> ${input.shot_id}. Spatial memory silently updated.`,
@@ -708,11 +887,13 @@ export function registerMcpTools(
                   shot_id: input.shot_id,
                   locked_shot: shotToLock,
                   spatial_memory: updatedState.scenes.find((s) => s.scene_id === input.scene_id)?.spatial_memory || [],
+                  last_shot_egress: updatedState.scenes.find((s) => s.scene_id === input.scene_id)?.last_shot_egress || '',
+                  system_instruction: systemMsg,
                   state: updatedState
                 },
                 null,
                 2
-              )
+              )}`
             }
           ]
         };

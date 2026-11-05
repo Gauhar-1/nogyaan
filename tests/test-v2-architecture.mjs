@@ -14,14 +14,18 @@ import {
   NogyaanStateSchema,
   ScriptPitchSchema,
   ShotPitchSchema,
-  AssetExtractionResultSchema
+  AssetExtractionResultSchema,
+  ShotNodeSchema,
+  ShotConceptSchema
 } from '../dist/v2/types.js';
 import {
   ZERO_YAP_CONSTRAINT,
   WRITER_SYSTEM_PROMPT,
   ASSET_EXTRACTOR_SYSTEM_PROMPT,
   DP_SYSTEM_PROMPT,
-  REROLL_SYSTEM_PROMPT
+  REROLL_SYSTEM_PROMPT,
+  SHOT_CONCEPTS_SYSTEM_PROMPT,
+  COMPILE_SOTA_PROMPT_SYSTEM_PROMPT
 } from '../dist/v2/prompts.js';
 
 console.log('🧪 Starting nogyaan V2 Just-In-Time (JIT) Context Slicing Automated Verification...\n');
@@ -41,6 +45,8 @@ try {
   assert(ASSET_EXTRACTOR_SYSTEM_PROMPT.startsWith(expectedPrefix), 'ASSET_EXTRACTOR_SYSTEM_PROMPT must start with Zero-Yap constraint');
   assert(DP_SYSTEM_PROMPT.startsWith(expectedPrefix), 'DP_SYSTEM_PROMPT must start with Zero-Yap constraint');
   assert(REROLL_SYSTEM_PROMPT.startsWith(expectedPrefix), 'REROLL_SYSTEM_PROMPT must start with Zero-Yap constraint');
+  assert(SHOT_CONCEPTS_SYSTEM_PROMPT.startsWith(expectedPrefix), 'SHOT_CONCEPTS_SYSTEM_PROMPT must start with Zero-Yap constraint');
+  assert(COMPILE_SOTA_PROMPT_SYSTEM_PROMPT.startsWith(expectedPrefix), 'COMPILE_SOTA_PROMPT_SYSTEM_PROMPT must start with Zero-Yap constraint');
 
   const hardStopDirective = 'CRITICAL: You are an interactive DP. You must only pitch 3 options for the CURRENT single shot. Do NOT generate the next shot. Do NOT generate a prompt for the whole scene. Output the 3 options as JSON, then STOP and wait for the user\'s selection. Do not attempt to complete the storyboard.';
   assert(DP_SYSTEM_PROMPT.includes(hardStopDirective), 'DP_SYSTEM_PROMPT must contain the exact hard stop directive');
@@ -333,7 +339,9 @@ try {
     }
   });
 
-  const pitchData = JSON.parse(pitchCall.content[0].text);
+  const rawPitchText = pitchCall.content[0].text;
+  assert(rawPitchText.includes('[SYSTEM: Pitch successful. Ask the user to reply ONLY with "1", "2", or "3"'));
+  const pitchData = JSON.parse(rawPitchText.slice(rawPitchText.indexOf('{')));
   assert.equal(pitchData.status, 'YIELD_TO_USER', 'Must return YIELD_TO_USER status');
   assert.equal(pitchData.action_required, 'USER_SELECTION', 'Must require USER_SELECTION');
   assert.equal(pitchData.options.length, 3, 'Must pitch exactly 3 options');
@@ -341,6 +349,105 @@ try {
   assert(pitchData._systemDirective.instruction.includes('CRITICAL: You are an interactive DP. You must only pitch 3 options for the CURRENT single shot. Do NOT generate the next shot. Do NOT generate a prompt for the whole scene. Output the 3 options as JSON, then STOP and wait for the user\'s selection. Do not attempt to complete the storyboard.'));
 
   console.log('  ✅ MCP Tools verified: Zero scene-level prompt tools, strict Yield-to-User state machine.');
+
+  // ==========================================================================
+  // Test 9: SOTA DP Suite Deferred Payload Generation & Temporal Handshake
+  // ==========================================================================
+  console.log('\n🔹 Test 9: SOTA DP Suite Deferred Generation & Temporal Handshake (Tool A & Tool B)');
+
+  // 1. Tool registration checks
+  assert(registeredToolNames.includes('pitch_shot_concepts'), 'pitch_shot_concepts must be registered as Tool A');
+  assert(registeredToolNames.includes('compile_sota_prompt'), 'compile_sota_prompt must be registered as Tool B');
+
+  // 2. Tool A: pitch_shot_concepts for Scene 1 Shot 1
+  const conceptsCall = await callHandler({
+    params: {
+      name: 'pitch_shot_concepts',
+      arguments: { scene_id: 'SCENE_01', shot_id: 'SHOT_01' }
+    }
+  });
+
+  const rawConcepts = conceptsCall.content[0].text;
+  assert(rawConcepts.includes('[SYSTEM: Pitch successful. Ask the user to reply ONLY with "1", "2", or "3" to select their shot. If they want to move on, tell them to type "N" for Next Shot or "S" for Next Scene. Keep your response under 2 sentences.]'));
+
+  const conceptsData = JSON.parse(rawConcepts.slice(rawConcepts.indexOf('{')));
+  assert.equal(conceptsData.status, 'YIELD_TO_USER');
+  assert.equal(conceptsData.action_required, 'USER_SELECTION');
+  assert(conceptsData.concepts['1'], 'Must contain Concept 1');
+  assert(conceptsData.concepts['2'], 'Must contain Concept 2');
+  assert(conceptsData.concepts['3'], 'Must contain Concept 3');
+  assert.equal(conceptsData.concepts['1'].persona, 'Auteur');
+  assert.equal(conceptsData.concepts['2'].persona, 'Kinetic');
+  assert.equal(conceptsData.concepts['3'].persona, 'Theatrical');
+
+  // Verify zero technical camera data in Tool A visual_intent
+  const combinedIntent = `${conceptsData.concepts['1'].visual_intent} ${conceptsData.concepts['2'].visual_intent} ${conceptsData.concepts['3'].visual_intent}`.toLowerCase();
+  assert(!combinedIntent.includes('f/'), 'Concepts must not contain lens aperture data');
+  assert(!combinedIntent.includes('shutter'), 'Concepts must not contain shutter data');
+  assert(!combinedIntent.includes('iso'), 'Concepts must not contain ISO data');
+
+  // 3. Tool B: compile_sota_prompt for Scene 1 Shot 1 (Concept 1 - Auteur)
+  const compileCall1 = await callHandler({
+    params: {
+      name: 'compile_sota_prompt',
+      arguments: {
+        scene_id: 'SCENE_01',
+        shot_id: 'SHOT_01',
+        selected_option: '1'
+      }
+    }
+  });
+
+  const rawCompile1 = compileCall1.content[0].text;
+  assert(rawCompile1.includes('[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]'));
+
+  const compileData1 = JSON.parse(rawCompile1.slice(rawCompile1.indexOf('{')));
+  assert.equal(compileData1.success, true);
+  assert.equal(compileData1.shot_id, 'SHOT_01');
+  assert(compileData1.shot.visual_intent.length > 0);
+  assert(compileData1.shot.sota_payload.length > 0);
+
+  const payload1 = compileData1.shot.sota_payload;
+  assert(payload1.includes('Shot begins with'), 'SOTA payload must contain INGRESS clause');
+  assert(payload1.includes('Shot ends with'), 'SOTA payload must contain EGRESS clause');
+
+  // Verify silent state persistence on disk for Scene 1 Shot 1
+  const sc1 = stateManager.getScene('SCENE_01');
+  assert(sc1.last_shot_egress.length > 0, 'Scene 1 must record last_shot_egress from Shot 1');
+  assert(sc1.shots['SHOT_01'], 'Scene 1 must contain SHOT_01 ShotNode');
+  const shot1Egress = sc1.last_shot_egress;
+
+  // 4. Temporal Handshake: Tool B for Scene 1 Shot 2 builds on Shot 1 Egress
+  const sliceForShot2 = stateManager.getShotContextSlice('SCENE_01', 'SHOT_02');
+  assert.equal(sliceForShot2.last_shot_egress, shot1Egress, 'Shot 2 context slice must receive Shot 1 egress');
+
+  const compileCall2 = await callHandler({
+    params: {
+      name: 'compile_sota_prompt',
+      arguments: {
+        scene_id: 'SCENE_01',
+        shot_id: 'SHOT_02',
+        selected_option: '2'
+      }
+    }
+  });
+
+  const rawCompile2 = compileCall2.content[0].text;
+  const compileData2 = JSON.parse(rawCompile2.slice(rawCompile2.indexOf('{')));
+  assert.equal(compileData2.success, true);
+  assert.equal(compileData2.shot_id, 'SHOT_02');
+
+  const payload2 = compileData2.shot.sota_payload;
+  assert(payload2.includes('Shot begins with'), 'Shot 2 SOTA payload must contain INGRESS clause');
+  assert(payload2.includes('Shot ends with'), 'Shot 2 SOTA payload must contain EGRESS clause');
+
+  // Verify Scene 1 state on disk now records Shot 2's new egress and ShotNode
+  const sc1Updated = stateManager.getScene('SCENE_01');
+  assert(sc1Updated.shots['SHOT_02'], 'Scene 1 must contain SHOT_02 ShotNode');
+  assert(sc1Updated.last_shot_egress.length > 0, 'Scene 1 must update last_shot_egress');
+  assert(Array.isArray(sc1Updated.spatial_memory), 'Scene 1 must maintain spatial_memory array');
+
+  console.log('  ✅ SOTA DP Suite verified: Single-keystroke returns, deferred generation, and temporal ingress/egress handshake.');
 
   // Clean up
   fs.rmSync(tmpDir, { recursive: true, force: true });

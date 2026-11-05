@@ -2265,6 +2265,12 @@
                         )
                       ]),
 
+                      // Temporal Egress Anchor (SOTA Handshake)
+                      scene.last_shot_egress && e('div', { key: 'temporal-egress-row', className: 'pt-3 border-t border-slate-800/80 flex flex-col gap-1.5 mb-3' }, [
+                        e('span', { key: 'lbl-eg', className: 'text-[11px] font-mono text-cyan-400 uppercase tracking-wider font-semibold' }, 'Temporal Handshake (Last Shot Egress):'),
+                        e('span', { key: 'eg-val', className: 'text-xs text-cyan-200 font-sans italic bg-cyan-950/40 border border-cyan-800/50 rounded px-2.5 py-1' }, '🔗 ' + scene.last_shot_egress)
+                      ]),
+
                       // Audio Stems Separation (if present)
                       locked_script.audio_stem && e('div', { key: 'audio-stems', className: 'grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-slate-800 text-xs font-sans' }, [
                         e('div', { key: 'd-box', className: 'p-3 bg-slate-950/60 rounded border border-slate-800/80' }, [
@@ -2314,18 +2320,18 @@
 
                       shotPairs.length === 0
                         ? e('p', { key: 'empty-shots', className: 'text-xs italic text-slate-500 py-3 font-sans' },
-                            'No shots pitched yet for this scene. Call pitch_shot_options to generate 3 treatments.'
+                            'No shots pitched yet for this scene. Call pitch_shot_concepts to generate 3 concepts.'
                           )
                         : e('div', { key: 'shots-list', className: 'space-y-6' },
                             shotPairs.map(function(pair) {
                               var shotKey = pair[0];
-                              var lockedShot = pair[1]?.locked_shot;
-                              if (!lockedShot) return null;
+                              var shotObj = pair[1]?.locked_shot || pair[1];
+                              if (!shotObj || (!shotObj.visual_intent && !shotObj.txt && !shotObj.sota_payload && !shotObj.prmpt)) return null;
                               var nodeIdentifier = scene.scene_id + ':' + shotKey;
-                              var shotId = lockedShot.id || lockedShot.option_id || shotKey;
-                              var shotStyle = lockedShot.style || lockedShot.director_persona || 'Auteur';
-                              var shotTxt = lockedShot.txt || lockedShot.visual_intent || '';
-                              var shotPrmpt = lockedShot.prmpt || lockedShot.ai_payload || '';
+                              var shotId = shotObj.id || shotObj.option_id || shotKey;
+                              var shotStyle = shotObj.style || shotObj.director_persona || (shotObj.visual_intent ? 'SOTA Shot' : 'Auteur');
+                              var shotTxt = shotObj.visual_intent || shotObj.txt || '';
+                              var shotPrmpt = shotObj.sota_payload || shotObj.prmpt || shotObj.ai_payload || '';
                               var isCopied = copiedShotId === shotId;
                               var isReRolling = reRollingNodeId === nodeIdentifier;
                               var isCollapsed = !!collapsedPayloads[shotId];

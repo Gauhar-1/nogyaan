@@ -130,7 +130,7 @@ export class RerollService {
       }
     }
 
-    // Heuristic refinement for ShotPitch / ShotOption
+    // Heuristic refinement for ShotPitch / ShotOption / ShotNode
     const cur: any = currentShot;
     if (cur.prmpt !== undefined) {
       // ShotPitch
@@ -142,6 +142,20 @@ export class RerollService {
         style: cur.style || 'Auteur',
         txt: `${cur.txt.trim()} (Directorial adjustment: ${userFeedback.trim()})`,
         prmpt: newPrmpt
+      });
+    }
+
+    if (cur.sota_payload !== undefined || (cur.visual_intent !== undefined && !cur.ai_payload)) {
+      // ShotNode
+      const basePayload = cur.sota_payload || cur.ai_payload || '';
+      const newPayload = `${basePayload.trim()}, [Direction: ${userFeedback.trim()}]`
+        .replace(/\b(live-action|live action|anime|pixar|3d|photorealistic)\b/gi, '')
+        .trim();
+      return AnyLockedShotSchema.parse({
+        id: cur.id || 'A',
+        style: cur.style || 'Auteur',
+        visual_intent: `${cur.visual_intent?.trim() || ''} (Directorial adjustment: ${userFeedback.trim()})`,
+        sota_payload: newPayload
       });
     }
 

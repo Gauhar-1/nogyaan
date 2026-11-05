@@ -11,7 +11,8 @@ import {
   Medium,
   NogyaanState,
   NogyaanStateSchema,
-  Scene
+  Scene,
+  ShotNode
 } from './types.js';
 
 export class StateManager {
@@ -223,6 +224,7 @@ export class StateManager {
         locked_script: validatedScript,
         active_refs: [],
         spatial_memory: [],
+        last_shot_egress: '',
         shots: {}
       };
       this.state.scenes.push(scene);
@@ -231,19 +233,26 @@ export class StateManager {
       if (!scene.spatial_memory) {
         scene.spatial_memory = [];
       }
+      if (scene.last_shot_egress === undefined) {
+        scene.last_shot_egress = '';
+      }
     }
 
     this.saveToFile();
     return this.getState();
   }
 
-  public lockShot(
+  /**
+   * Saves a finalized ShotNode (visual_intent + sota_payload) into the scene's shot record,
+   * silently tracks the temporal last_shot_egress, and updates rolling spatial_memory.
+   */
+  public saveShotNode(
     scene_id: string,
     shot_id: string,
-    shot: LockedShot,
+    node: ShotNode,
+    explicitEgress?: string,
     explicitSpatialFacts?: string[]
   ): NogyaanState {
-    const validatedShot = AnyLockedShotSchema.parse(shot);
     let scene = this.state.scenes.find((s) => s.scene_id === scene_id);
 
     if (!scene) {
@@ -252,6 +261,7 @@ export class StateManager {
         locked_script: null,
         active_refs: [],
         spatial_memory: [],
+        last_shot_egress: '',
         shots: {}
       };
       this.state.scenes.push(scene);
@@ -265,19 +275,70 @@ export class StateManager {
       scene.spatial_memory = [];
     }
 
+    if (scene.last_shot_egress === undefined) {
+      scene.last_shot_egress = '';
+    }
+
+    // Save the ShotNode
     scene.shots[shot_id] = {
-      locked_shot: validatedShot
+      id: (node as any).id,
+      style: (node as any).style,
+      visual_intent: node.visual_intent,
+      sota_payload: node.sota_payload
     };
 
-    // The Spatial Mutation: Silently append or update the spatial_memory array
-    // with any new physical positions established in that shot.
-    const newPositions = this.extractSpatialFactsFromShot(validatedShot, explicitSpatialFacts);
-    for (const pos of newPositions) {
-      this.updateOrAppendSpatialFact(scene.spatial_memory, pos);
+    // Extract or update temporal egress (passes to the next shot's Ingress)
+    const egress = explicitEgress || this.extractEgressFromPayload(node.sota_payload);
+    if (egress && egress.trim().length > 0) {
+      scene.last_shot_egress = egress.trim();
+    }
+
+    // Silent spatial mutation: extract and append physical room geometry facts
+    const facts = this.extractSpatialFactsFromPayload(node.sota_payload, explicitSpatialFacts);
+    for (const fact of facts) {
+      this.updateOrAppendSpatialFact(scene.spatial_memory, fact);
     }
 
     this.saveToFile();
     return this.getState();
+  }
+
+  public lockShot(
+    scene_id: string,
+    shot_id: string,
+    shot: LockedShot,
+    explicitSpatialFacts?: string[]
+  ): NogyaanState {
+    const anyShot = shot as any;
+    const visual_intent = anyShot.visual_intent || anyShot.txt || '';
+    const sota_payload = anyShot.sota_payload || anyShot.prmpt || anyShot.ai_payload || '';
+    const node: ShotNode = {
+      id: anyShot.id || anyShot.option_id,
+      style: anyShot.style || anyShot.director_persona,
+      visual_intent,
+      sota_payload
+    };
+
+    return this.saveShotNode(scene_id, shot_id, node, anyShot.egress, explicitSpatialFacts);
+  }
+
+  /**
+   * Extracts the terminating temporal egress state from a SOTA prompt payload.
+   */
+  public extractEgressFromPayload(payload: string): string {
+    if (!payload) return '';
+    const match = payload.match(/(?:Shot ends with|Ends with|Egress:?)\s+([^.]+(?:\.[^.]+)?)/i);
+    if (match && match[1]) {
+      return match[1].replace(/[.]+$/, '').trim();
+    }
+    const sentences = payload.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+    if (sentences.length > 0) {
+      const last = sentences[sentences.length - 1];
+      if (/rests|stands|seated|closed|freeze|holds|pauses|ends/i.test(last)) {
+        return last.replace(/[.]+$/, '').trim();
+      }
+    }
+    return '';
   }
 
   public appendSpatialMemory(scene_id: string, facts: string[]): NogyaanState {
@@ -358,6 +419,16 @@ export class StateManager {
     }
 
     return results;
+  }
+
+  public extractSpatialFactsFromPayload(
+    payload: string,
+    explicitFacts?: string[]
+  ): string[] {
+    return this.extractSpatialFactsFromShot(
+      { txt: '', prmpt: payload } as any,
+      explicitFacts
+    );
   }
 
   /**
@@ -476,6 +547,7 @@ export class StateManager {
     scene_narrative: string;
     filtered_assets: AssetBible;
     spatial_memory: string[];
+    last_shot_egress: string;
     global_director_notes: string;
   } {
     const scene = this.state.scenes.find((s) => s.scene_id === scene_id);
@@ -550,6 +622,7 @@ export class StateManager {
       scene_narrative,
       filtered_assets,
       spatial_memory: scene?.spatial_memory || [],
+      last_shot_egress: scene?.last_shot_egress || '',
       global_director_notes: this.state.global_director_notes || ''
     };
   }
@@ -600,12 +673,14 @@ export class StateManager {
     if (node_id.includes(':')) {
       const [sId, shId] = node_id.split(':');
       const sc = this.state.scenes.find((s) => s.scene_id === sId);
-      if (sc && sc.shots && sc.shots[shId]?.locked_shot) {
+      if (sc && sc.shots && sc.shots[shId]) {
+        const shVal = sc.shots[shId] as any;
+        const shotObj = shVal.locked_shot || shVal;
         return {
           type: 'shot',
           scene: sc,
           shot_id: shId,
-          shot: sc.shots[shId].locked_shot!
+          shot: shotObj
         };
       }
     }
@@ -614,7 +689,7 @@ export class StateManager {
     for (const sc of this.state.scenes) {
       if (sc.shots) {
         for (const [sKey, sVal] of Object.entries(sc.shots)) {
-          const lShot: any = sVal?.locked_shot;
+          const lShot: any = (sVal as any)?.locked_shot || sVal;
           if (
             sKey === node_id ||
             lShot?.id === node_id ||
@@ -650,15 +725,26 @@ export class StateManager {
   public updateLockedShot(
     scene_id: string,
     shot_id: string,
-    updated: LockedShot
+    updated: LockedShot | ShotNode
   ): NogyaanState {
-    const validated = AnyLockedShotSchema.parse(updated);
     const scene = this.state.scenes.find((s) => s.scene_id === scene_id);
     if (!scene) {
       throw new Error(`Scene "${scene_id}" not found.`);
     }
     if (!scene.shots) scene.shots = {};
-    scene.shots[shot_id] = { locked_shot: validated };
+    const anyUp = updated as any;
+    const existing = scene.shots[shot_id] as any;
+    const node: ShotNode = {
+      id: anyUp.id || anyUp.option_id || existing?.id,
+      style: anyUp.style || anyUp.director_persona || existing?.style,
+      visual_intent: anyUp.visual_intent || anyUp.txt || '',
+      sota_payload: anyUp.sota_payload || anyUp.prmpt || anyUp.ai_payload || ''
+    };
+    scene.shots[shot_id] = node;
+    const egress = this.extractEgressFromPayload(node.sota_payload);
+    if (egress) {
+      scene.last_shot_egress = egress;
+    }
     this.saveToFile();
     return this.getState();
   }
