@@ -81,6 +81,10 @@ export const DirectorsTreatmentApp: React.FC = () => {
     }));
   };
 
+  const handlePrintPdf = () => {
+    window.print();
+  };
+
   if (!state) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black text-neutral-400 font-mono text-xs uppercase tracking-widest">
@@ -93,6 +97,50 @@ export const DirectorsTreatmentApp: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full bg-black text-neutral-100 font-sans overflow-hidden">
+      <style>{`
+        @media print {
+          @page {
+            margin: 15mm;
+            size: portrait;
+          }
+          body, html {
+            background: #000000 !important;
+            color: #FFFFFF !important;
+            overflow: visible !important;
+            height: auto !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print, button {
+            display: none !important;
+          }
+          aside {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            position: static !important;
+            border-right: none !important;
+            border-bottom: 2px solid #333333 !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
+          main {
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+            padding: 0 !important;
+          }
+          section, .shot-card-container {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            margin-bottom: 20px !important;
+          }
+          .ai-payload-term {
+            display: block !important;
+          }
+        }
+      `}</style>
+
       {/* ==================================================================== */}
       {/* 1. STICKY SIDEBAR: ASSET BIBLE & PERSISTENT RULES (Read-Only 25%)    */}
       {/* ==================================================================== */}
@@ -226,6 +274,13 @@ export const DirectorsTreatmentApp: React.FC = () => {
               </h1>
             </div>
             <div className="flex items-center gap-3">
+              {/* Feature 1: Export Blueprint to PDF Button */}
+              <button
+                onClick={handlePrintPdf}
+                className="no-print px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border border-neutral-700 bg-neutral-900 hover:bg-white hover:text-black text-neutral-200 rounded cursor-pointer"
+              >
+                EXPORT BLUEPRINT TO PDF
+              </button>
               <span className="text-[10px] font-mono px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 uppercase">
                 {global_medium}
               </span>
@@ -515,7 +570,7 @@ const ShotCard: React.FC<ShotCardProps> = ({
     (shot as any).sota_payload || (shot as any).prmpt || (shot as any).ai_payload || '';
 
   return (
-    <div className="bg-neutral-950 border border-neutral-800 rounded p-5 transition-all">
+    <div className="shot-card-container bg-neutral-950 border border-neutral-800 rounded p-5 transition-all">
       {/* Shot Header */}
       <div className="flex items-center justify-between mb-3 border-b border-neutral-800 pb-3">
         <div className="flex items-center gap-2">
@@ -527,10 +582,10 @@ const ShotCard: React.FC<ShotCardProps> = ({
           </span>
         </div>
 
-        {/* The ONLY button allowed on a Shot Card: Copy AI Payload */}
+        {/* The ONLY button allowed on a Shot Card: Copy AI Payload (Hidden in PDF print) */}
         <button
           onClick={() => onCopy(shotPrmpt)}
-          className={`px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border ${
+          className={`no-print px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border ${
             isCopied
               ? 'bg-white text-black border-white'
               : 'bg-neutral-900 hover:bg-white hover:text-black text-neutral-200 border-neutral-700'
@@ -550,7 +605,7 @@ const ShotCard: React.FC<ShotCardProps> = ({
         </blockquote>
       </div>
 
-      {/* AI Video Diffusion Payload (Collapsible Monospaced Block) */}
+      {/* AI Video Diffusion Payload (Collapsible Monospaced Block, Always Visible in Print) */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
@@ -558,14 +613,18 @@ const ShotCard: React.FC<ShotCardProps> = ({
           </span>
           <button
             onClick={onToggleCollapse}
-            className="text-[10px] font-mono text-neutral-400 hover:text-white transition-colors"
+            className="no-print text-[10px] font-mono text-neutral-400 hover:text-white transition-colors"
           >
             {isPayloadCollapsed ? '[EXPAND]' : '[COLLAPSE]'}
           </button>
         </div>
 
-        {!isPayloadCollapsed && (
-          <div className="bg-black border border-neutral-800 rounded p-3 font-mono text-xs text-neutral-300 leading-relaxed overflow-x-auto">
+        {(!isPayloadCollapsed || true) && (
+          <div
+            className={`ai-payload-term bg-black border border-neutral-800 rounded p-3 font-mono text-xs text-neutral-300 leading-relaxed overflow-x-auto ${
+              isPayloadCollapsed ? 'hidden print:block' : 'block'
+            }`}
+          >
             <span className="text-neutral-500 select-none mr-2">$</span>
             <span className="text-white font-semibold select-none">[{globalMedium}] </span>
             <span>{shotPrmpt}</span>

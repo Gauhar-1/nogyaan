@@ -117,6 +117,27 @@
       color: var(--text-gray);
     }
 
+    .header-action-btn {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 3px;
+      border: 1px solid var(--border-light);
+      background: var(--surface-card);
+      color: var(--text-white);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .header-action-btn:hover {
+      background: #FFFFFF;
+      color: #000000;
+      border-color: #FFFFFF;
+    }
+
     /* Custom Toast Notification */
     .toast-msg {
       position: fixed;
@@ -162,6 +183,88 @@
     ::-webkit-scrollbar-thumb:hover {
       background: #404040;
     }
+
+    /* ======================================================================== */
+    /* Flawless Monochrome PDF Print Stylesheet                                 */
+    /* ======================================================================== */
+    @media print {
+      @page {
+        margin: 15mm;
+        size: A4 portrait;
+      }
+
+      html, body {
+        background: #000000 !important;
+        color: #FFFFFF !important;
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      header.global-app-header {
+        position: static !important;
+        border-bottom: 1px solid #333333 !important;
+        background: #000000 !important;
+        padding: 10px 0 !important;
+      }
+
+      #treatment-root {
+        display: block !important;
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
+        background: #000000 !important;
+      }
+
+      aside {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        position: static !important;
+        overflow: visible !important;
+        border-right: none !important;
+        border-bottom: 2px solid #333333 !important;
+        margin-bottom: 24px !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+
+      main {
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        background: #000000 !important;
+      }
+
+      section {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        margin-bottom: 24px !important;
+        border: 1px solid #333333 !important;
+        background: #0A0A0A !important;
+      }
+
+      .shot-card-container {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        border: 1px solid #333333 !important;
+        background: #0A0A0A !important;
+        margin-bottom: 16px !important;
+      }
+
+      .ai-payload-term {
+        display: block !important;
+      }
+
+      .no-print,
+      button,
+      .toast-msg {
+        display: none !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -177,6 +280,10 @@
     </div>
 
     <div class="flex items-center gap-3">
+      <!-- Feature 1: Export Blueprint to PDF Button -->
+      <button onclick="window.print()" class="no-print header-action-btn">
+        EXPORT BLUEPRINT TO PDF
+      </button>
       <span class="header-badge">READ-ONLY LIVE VIEWER</span>
     </div>
   </header>
@@ -378,6 +485,12 @@
                 e('h1', { key: 'h1', className: 'text-2xl font-bold tracking-tight text-white font-sans uppercase' }, project_id)
               ]),
               e('div', { key: 'meta-pills', className: 'flex items-center gap-3' }, [
+                // Feature 1: Export Blueprint to PDF Button
+                e('button', {
+                  key: 'btn-export-pdf',
+                  onClick: function() { window.print(); },
+                  className: 'no-print px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border border-neutral-700 bg-neutral-900 hover:bg-white hover:text-black text-neutral-200 rounded cursor-pointer'
+                }, 'EXPORT BLUEPRINT TO PDF'),
                 e('span', { key: 'med', className: 'text-[10px] font-mono px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 uppercase' }, global_medium),
                 e('span', { key: 'cnt', className: 'text-[10px] font-mono px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 uppercase' }, scenes.length + ' SCENES IN SEQUENCE')
               ])
@@ -510,9 +623,9 @@
 
                               return e('div', {
                                 key: shotKey,
-                                className: 'bg-neutral-950 border border-neutral-800 rounded p-5 transition-all'
+                                className: 'shot-card-container bg-neutral-950 border border-neutral-800 rounded p-5 transition-all'
                               }, [
-                                // Shot Card Header with Persona and the ONLY allowed button: Copy AI Payload
+                                // Shot Card Header with Persona and the ONLY allowed button: Copy AI Payload (Hidden in PDF print)
                                 e('div', { key: 'sh-hdr', className: 'flex items-center justify-between mb-3 border-b border-neutral-800 pb-3' }, [
                                   e('div', { key: 'sh-left', className: 'flex items-center gap-2' }, [
                                     e('span', { key: 'k', className: 'font-mono text-xs font-bold px-2 py-0.5 rounded bg-neutral-900 text-white border border-neutral-800' }, shotKey),
@@ -523,7 +636,7 @@
                                   e('button', {
                                     key: 'btn-copy',
                                     onClick: function() { handleCopy(shotId, shotPrmpt); },
-                                    className: 'px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border ' +
+                                    className: 'no-print px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border ' +
                                       (isCopied
                                         ? 'bg-white text-black border-white'
                                         : 'bg-neutral-900 hover:bg-white hover:text-black text-neutral-200 border-neutral-700')
@@ -538,17 +651,20 @@
                                   )
                                 ]),
 
-                                // AI Video Diffusion Payload (Collapsible Monospaced Block)
+                                // AI Video Diffusion Payload (Collapsible Monospaced Block, Always Visible in Print)
                                 e('div', { key: 'ai-box' }, [
                                   e('div', { key: 'ai-hdr', className: 'flex items-center justify-between mb-1.5' }, [
                                     e('span', { key: 'lbl', className: 'text-[10px] font-mono text-neutral-500 uppercase tracking-widest' }, 'AI VIDEO DIFFUSION PAYLOAD (SOTA COMPILATION)'),
                                     e('button', {
                                       key: 'btn-tog',
                                       onClick: function() { toggleCollapse(shotId); },
-                                      className: 'text-[10px] font-mono text-neutral-400 hover:text-white transition-colors'
+                                      className: 'no-print text-[10px] font-mono text-neutral-400 hover:text-white transition-colors'
                                     }, isCollapsed ? '[EXPAND]' : '[COLLAPSE]')
                                   ]),
-                                  !isCollapsed && e('div', { key: 'term', className: 'bg-black border border-neutral-800 rounded p-3 font-mono text-xs text-neutral-300 leading-relaxed overflow-x-auto' }, [
+                                  e('div', {
+                                    key: 'term',
+                                    className: 'ai-payload-term bg-black border border-neutral-800 rounded p-3 font-mono text-xs text-neutral-300 leading-relaxed overflow-x-auto ' + (isCollapsed ? 'hidden print:block' : 'block')
+                                  }, [
                                     e('span', { key: 'prompt-sign', className: 'text-neutral-500 select-none mr-2' }, '$'),
                                     e('span', { key: 'med-tag', className: 'text-white font-semibold select-none' }, '[' + global_medium + '] '),
                                     e('span', { key: 'body' }, shotPrmpt)
