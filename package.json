@@ -37,6 +37,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.0",
     "commander": "^13.1.0",
+    "jspdf": "^4.2.1",
     "open": "^10.1.0",
     "zod": "^3.24.2"
   },

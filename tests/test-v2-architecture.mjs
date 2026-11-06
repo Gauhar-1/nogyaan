@@ -487,6 +487,38 @@ try {
   assert(!rerolledShot.sota_payload.toLowerCase().includes('seated'), 'Old contradictory posture (seated) must be erased');
   console.log('  ✅ reroll_shot successfully rewrote shot without bracketed notes and erased contradictory facts.');
 
+  // ==========================================================================
+  // Test 11: Native JSON-to-PDF Generator (Selectable Text, No Screenshot DOM Capture)
+  // ==========================================================================
+  console.log('\n🔹 Test 11: Native JSON-to-PDF Generator Verification');
+  const { buildTreatmentPdfDoc, generateTreatmentPdfBuffer } = await import('../dist/v2/pdf-generator.js');
+
+  const pdfDoc = buildTreatmentPdfDoc(currentState);
+  assert(pdfDoc, 'buildTreatmentPdfDoc must return a jsPDF instance');
+  assert(pdfDoc.getNumberOfPages() >= 2, 'Generated PDF must be multi-page (Page 1 = Cover/Context, Subsequent = Scenes)');
+
+  const pdfBuffer = generateTreatmentPdfBuffer(currentState);
+  assert(Buffer.isBuffer(pdfBuffer), 'generateTreatmentPdfBuffer must return a Node Buffer');
+  assert(pdfBuffer.length > 2000, 'PDF buffer must have valid byte length');
+  assert.equal(pdfBuffer.subarray(0, 5).toString('utf-8'), '%PDF-', 'PDF must begin with native %PDF- magic bytes');
+
+  // Verify complete elimination of screenshot / window.print approach
+  const studioHtmlPath = path.resolve('src/ui/studio-app.html');
+  const studioHtmlContent = fs.readFileSync(studioHtmlPath, 'utf-8');
+  assert(!studioHtmlContent.includes('window.print()'), 'studio-app.html must NOT contain window.print()');
+  assert(!studioHtmlContent.includes('html2canvas'), 'studio-app.html must NOT contain html2canvas');
+  assert(!studioHtmlContent.includes('html2pdf'), 'studio-app.html must NOT contain html2pdf');
+  assert(studioHtmlContent.includes('exportNativeBlueprintPdf'), 'studio-app.html must contain exportNativeBlueprintPdf');
+
+  const reactAppPath = path.resolve('src/ui/NogyaanV2App.tsx');
+  const reactAppContent = fs.readFileSync(reactAppPath, 'utf-8');
+  assert(!reactAppContent.includes('window.print()'), 'NogyaanV2App.tsx must NOT contain window.print()');
+  assert(!reactAppContent.includes('html2canvas'), 'NogyaanV2App.tsx must NOT contain html2canvas');
+  assert(!reactAppContent.includes('html2pdf'), 'NogyaanV2App.tsx must NOT contain html2pdf');
+  assert(reactAppContent.includes('downloadTreatmentPdf'), 'NogyaanV2App.tsx must import and use downloadTreatmentPdf');
+
+  console.log('  ✅ Native JSON-to-PDF Generator produces multi-page selectable-text PDF with zero DOM-screenshot dependencies.');
+
   // Clean up
   fs.rmSync(tmpDir, { recursive: true, force: true });
 

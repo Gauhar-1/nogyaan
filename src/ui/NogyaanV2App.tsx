@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NogyaanState, Medium, LockedScript, LockedShot } from '../v2/types.js';
+import { downloadTreatmentPdf } from '../v2/pdf-generator.js';
 
 export const DirectorsTreatmentApp: React.FC = () => {
   const [state, setState] = useState<NogyaanState | null>(null);
@@ -81,8 +82,12 @@ export const DirectorsTreatmentApp: React.FC = () => {
     }));
   };
 
-  const handlePrintPdf = () => {
-    window.print();
+  const handleExportPdf = () => {
+    if (!state) return;
+    const filename = state.project_id
+      ? `${state.project_id.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-blueprint.pdf`
+      : 'directors-treatment-blueprint.pdf';
+    downloadTreatmentPdf(state, filename);
   };
 
   if (!state) {
@@ -97,66 +102,6 @@ export const DirectorsTreatmentApp: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full bg-black text-neutral-100 font-sans overflow-hidden">
-      <style>{`
-        @media print {
-          @page {
-            margin: 15mm;
-            size: portrait;
-          }
-          html, body,
-          .h-screen, .max-h-screen, .overflow-hidden,
-          [class*="h-screen"], [class*="max-h-screen"], [class*="overflow-hidden"], [class*="overflow-y-auto"],
-          main, aside, div {
-            height: auto !important;
-            max-height: none !important;
-            overflow: visible !important;
-          }
-          html, body {
-            background: #000000 !important;
-            color: #FFFFFF !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          .no-print, button, .toast-msg {
-            display: none !important;
-          }
-          aside {
-            width: 100% !important;
-            max-width: 100% !important;
-            height: auto !important;
-            position: static !important;
-            overflow: visible !important;
-            border-right: none !important;
-            border-bottom: 2px solid #333333 !important;
-            margin-bottom: 24px !important;
-            page-break-after: avoid !important;
-            break-after: avoid !important;
-          }
-          main {
-            width: 100% !important;
-            height: auto !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            display: block !important;
-          }
-          section {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            margin-bottom: 24px !important;
-            display: block !important;
-          }
-          .shot-card-container {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            margin-bottom: 20px !important;
-            display: block !important;
-          }
-          .ai-payload-term {
-            display: block !important;
-          }
-        }
-      `}</style>
-
       {/* ==================================================================== */}
       {/* 1. STICKY SIDEBAR: ASSET BIBLE & PERSISTENT RULES (Read-Only 25%)    */}
       {/* ==================================================================== */}
@@ -292,8 +237,8 @@ export const DirectorsTreatmentApp: React.FC = () => {
             <div className="flex items-center gap-3">
               {/* Feature 1: Export Blueprint to PDF Button */}
               <button
-                onClick={handlePrintPdf}
-                className="no-print px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border border-neutral-700 bg-neutral-900 hover:bg-white hover:text-black text-neutral-200 rounded cursor-pointer"
+                onClick={handleExportPdf}
+                className="px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border border-neutral-700 bg-neutral-900 hover:bg-white hover:text-black text-neutral-200 rounded cursor-pointer"
               >
                 EXPORT BLUEPRINT TO PDF
               </button>
@@ -598,10 +543,10 @@ const ShotCard: React.FC<ShotCardProps> = ({
           </span>
         </div>
 
-        {/* The ONLY button allowed on a Shot Card: Copy AI Payload (Hidden in PDF print) */}
+        {/* The ONLY button allowed on a Shot Card: Copy AI Payload */}
         <button
           onClick={() => onCopy(shotPrmpt)}
-          className={`no-print px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border ${
+          className={`px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase transition-colors border ${
             isCopied
               ? 'bg-white text-black border-white'
               : 'bg-neutral-900 hover:bg-white hover:text-black text-neutral-200 border-neutral-700'
@@ -621,7 +566,7 @@ const ShotCard: React.FC<ShotCardProps> = ({
         </blockquote>
       </div>
 
-      {/* AI Video Diffusion Payload (Collapsible Monospaced Block, Always Visible in Print) */}
+      {/* AI Video Diffusion Payload (Collapsible Monospaced Block) */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
@@ -629,17 +574,15 @@ const ShotCard: React.FC<ShotCardProps> = ({
           </span>
           <button
             onClick={onToggleCollapse}
-            className="no-print text-[10px] font-mono text-neutral-400 hover:text-white transition-colors"
+            className="text-[10px] font-mono text-neutral-400 hover:text-white transition-colors"
           >
             {isPayloadCollapsed ? '[EXPAND]' : '[COLLAPSE]'}
           </button>
         </div>
 
-        {(!isPayloadCollapsed || true) && (
+        {!isPayloadCollapsed && (
           <div
-            className={`ai-payload-term bg-black border border-neutral-800 rounded p-3 font-mono text-xs text-neutral-300 leading-relaxed overflow-x-auto ${
-              isPayloadCollapsed ? 'hidden print:block' : 'block'
-            }`}
+            className="ai-payload-term bg-black border border-neutral-800 rounded p-3 font-mono text-xs text-neutral-300 leading-relaxed overflow-x-auto block"
           >
             <span className="text-neutral-500 select-none mr-2">$</span>
             <span className="text-white font-semibold select-none">[{globalMedium}] </span>

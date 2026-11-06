@@ -27,6 +27,7 @@ import { AssetLockerService } from './v2/asset-locker.service.js';
 import { DpPitchService } from './v2/dp-pitch.service.js';
 import { RerollService } from './v2/reroll.service.js';
 import { Medium } from './v2/types.js';
+import { generateTreatmentPdfBuffer } from './v2/pdf-generator.js';
 import { registerMcpPrompts } from './mcp/prompts.js';
 import { registerMcpTools } from './mcp/tools.js';
 
@@ -120,6 +121,28 @@ function startStudioServer(port: number = 4321): void {
     if (req.method === 'GET' && parsedUrl.pathname === '/api/v2/state') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(stateManager.getState(), null, 2));
+      return;
+    }
+
+    // 1.5. Native JSON-to-PDF Export (GET /api/v2/export-pdf or /api/v2/pdf)
+    if (req.method === 'GET' && (parsedUrl.pathname === '/api/v2/export-pdf' || parsedUrl.pathname === '/api/v2/pdf')) {
+      try {
+        const currentState = stateManager.getState();
+        const pdfBuffer = generateTreatmentPdfBuffer(currentState);
+        const filename = currentState.project_id
+          ? `${currentState.project_id.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-blueprint.pdf`
+          : 'directors-treatment-blueprint.pdf';
+
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': pdfBuffer.length
+        });
+        res.end(pdfBuffer);
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: `Failed to generate PDF: ${err.message}` }));
+      }
       return;
     }
 
@@ -421,6 +444,28 @@ function startStudioServer(port: number = 4321): void {
       }
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Asset Not Found');
+      return;
+    }
+
+    // Serve Vendor Libraries (e.g. /vendor/jspdf.umd.min.js for offline native PDF generation)
+    if (parsedUrl.pathname === '/vendor/jspdf.umd.min.js') {
+      const pkgRoot = getPackageRoot();
+      const jspdfCandidates = [
+        path.join(pkgRoot, 'node_modules', 'jspdf', 'dist', 'jspdf.umd.min.js'),
+        path.resolve(__dirname, '..', 'node_modules', 'jspdf', 'dist', 'jspdf.umd.min.js')
+      ];
+      for (const p of jspdfCandidates) {
+        if (fs.existsSync(p)) {
+          res.writeHead(200, {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Cache-Control': 'public, max-age=86400'
+          });
+          fs.createReadStream(p).pipe(res);
+          return;
+        }
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('jsPDF vendor bundle not found.');
       return;
     }
 

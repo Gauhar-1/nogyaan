@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/char.png" alt="nogyaan logo" width="88" height="88" />
+  <img src="https://res.cloudinary.com/dccklqtaw/image/upload/v1793966066/char.png" alt="nogyaan logo" width="88" height="88" />
 
   # nogyaan
 
@@ -35,7 +35,7 @@ On-Camera Lip-Sync: NONE | Post-Prod VO (Premiere): "Built from your feedback." 
 
 <!-- REQUIRED BEFORE LAUNCH: Drop 1 screenshot of localhost:4321 + 1 8-second GIF here -->
 <p align="center">
-  <img src="https://res.cloudinary.com/dccklqtaw/image/upload/v1793965926/Screenshot_2026-11-06_170928.png" width="100%" alt="nogyaan 2-Pane Split Director's Workbench" />
+  <img src="https://res.cloudinary.com/dccklqtaw/image/upload/v1793965926/Screenshot_2026-11-06_170928.png" width="100%" alt="nogyaan studio" />
 </p>
 
 ---
