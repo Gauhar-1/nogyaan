@@ -110,6 +110,7 @@ export class DpPitchService {
     spatial_memory: string[];
     sota_payload: string;
     visual_intent: string;
+    workflow_complete?: boolean;
   }> {
     const sm = input.state ? new StateManager() : this.stateManager;
     if (input.state) {
@@ -202,6 +203,27 @@ export class DpPitchService {
 
     const updatedScene = updatedState.scenes.find((s) => s.scene_id === input.scene_id);
 
+    // Detect workflow completion: final shot of the final scene (e.g. Scene 4, Shot 3)
+    const scenes = updatedState.scenes || [];
+    const isScene4 =
+      /scene[_-]?0?4\b/i.test(input.scene_id) ||
+      input.scene_id.toLowerCase().includes('climax') ||
+      input.scene_id.toLowerCase().includes('scene_4');
+    const isLastScene =
+      scenes.length > 0 &&
+      (input.scene_id.toLowerCase() === scenes[scenes.length - 1].scene_id.toLowerCase() ||
+        scenes.findIndex((s) => s.scene_id.toLowerCase() === input.scene_id.toLowerCase()) === scenes.length - 1);
+    const isFinalScene = isScene4 || (scenes.length >= 4 && isLastScene);
+
+    const shotCount = updatedScene ? Object.keys(updatedScene.shots || {}).length : 0;
+    const isShot3OrHigher =
+      /shot[_-]?0?[3-9]\b/i.test(resolvedShotId) ||
+      resolvedShotId.toLowerCase().includes('shot_3') ||
+      resolvedShotId.toLowerCase().includes('shot_03') ||
+      resolvedShotId.toLowerCase().includes('final');
+    const isFinalShot = isShot3OrHigher || shotCount >= 3;
+    const isWorkflowComplete = isFinalScene && isFinalShot;
+
     return {
       success: true,
       scene_id: input.scene_id,
@@ -210,7 +232,8 @@ export class DpPitchService {
       last_shot_egress: updatedScene?.last_shot_egress || egress,
       spatial_memory: updatedScene?.spatial_memory || [],
       sota_payload: sotaPayload,
-      visual_intent: visualIntent
+      visual_intent: visualIntent,
+      workflow_complete: isWorkflowComplete
     };
   }
 

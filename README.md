@@ -92,17 +92,18 @@ node dist/cli.js doctor
 
 ## How `nogyaan` Works (4 Keystrokes, Zero Prompt Engineering)
 
-1. **Pick a Cultural or Format Cartridge (`/` in Claude's input box):**
-   * `/preset-indian-d2c-story` — Indian emotional/humorous storytelling tropes + natural Hinglish dialogue.
-   * `/preset-dev-product-launch` — High-tempo SaaS & dev-tool launch videos (strictly 100% English).
-   * `/preset-tiktok-ugc-hook` — 3-second scroll-stoppers and direct-response retention arcs.
-2. **Branch & Prune (`1`, `2`, `3`, `R`):**
-   Claude proposes 3 options for each story beat. When you type `2`, `nogyaan` **physically deletes Options 1 and 3 from `.nogyaan/sessions/`** so rejected ideas never bleed into later scenes, and locks the **physical exit frame** of Scene N so Scene N+1 starts from the exact millisecond the previous shot ended.
-3. **Lock Your Cast & Set First (`CHAR_01`, `BG_01`, `PROD_01`):**
-   Before compiling camera shots, `nogyaan` locks your character turnaround, environment lighting, and product specs with one-click **Midjourney / Flux reference image prompts**.
-4. **Open the 2-Pane Split Director's Workbench (`http://localhost:4321`):**
-   Review your full narrative script on the left pane and copy individual scene prompts on the right—toggling effortlessly between **Reference Tag Mode (`@CHAR_01`)** and **Standalone Full-Text Mode**.
-
+1. **Pick a Story Cartridge (`/` in Claude's input box):**
+   * `/preset-indian-d2c-story` — Indian emotional/humorous storytelling + Hinglish dialogue.
+   * `/preset-dev-product-launch` — High-tempo SaaS launch videos (100% English).
+   * `/preset-tiktok-ugc-hook` — 3-second scroll-stoppers and retention arcs.
+2. **Branch & Prune (`1`, `2`, `3`, `N`):**
+   Claude proposes 3 options for each story beat. When you type `2`, `nogyaan` **physically deletes Options 1 and 3 from the state** so rejected ideas never bleed into later scenes, saving massive token costs.
+3. **Lock Your Cast & Set (`CHAR_01`, `BG_01`, `PROD_01`):**
+   Before compiling camera shots, lock your character turnaround and lighting. Use these descriptions to generate a single Base Image in Midjourney or Flux to feed into your video model.
+4. **Deferred DP Suite & The Temporal Handshake:**
+   Claude acts as your Director of Photography, pitching 3 visual concepts. Once you pick one, it compiles a dense AI video payload. It enforces an **INGRESS / EGRESS temporal handshake**—meaning the exact physical end-state of Shot 1 is written into the start-state of Shot 2, allowing for flawless match-cut stitching.
+5. **The Live Director's Treatment (`http://localhost:4321`):**
+   Watch your script assemble in real-time on a premium, monochrome typography-driven web viewer. One-click copy your SOTA payloads to Kling/Runway, or **Export to PDF** to send a professional Blueprint to your clients.
 ---
 
 ## `nogyaan` vs. Normal Claude Chat
@@ -113,7 +114,7 @@ node dist/cli.js doctor
 | **Scene Continuity** | Teleports characters between shots. | Enforces **Exit-Frame-to-Entry-Frame** physical bridges. |
 | **Voiceover vs. Lip-Sync** | Mixes narrator VO into video prompt (ruins actor mouth motion). | Strictly separates **On-Camera Lip-Sync** from **Post-Prod VO**. |
 | **Shot Breakdown** | Dumps all scenes in one lazy batch or hallucinates whole scenes. | Compiles **1 shot at a time** via interactive DP pitches (Auteur, Kinetic, Theatrical), yielding to user per shot. |
-| **Output Format** | 2,000-word wall of Markdown text. | **The Director's Treatment** (`localhost:4321`) with Live SSE Sync & One-Click Diffusion Copy. |
+| **Output Format** | 2,000-word wall of Markdown text. | **Monochrome Director's Treatment** (`localhost:4321`) with Live SSE Sync, One-Click Diffusion Copy, and Native PDF Export. |
 
 ---
 

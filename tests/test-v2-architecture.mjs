@@ -459,6 +459,35 @@ try {
 
   console.log('  ✅ SOTA DP Suite verified: Single-keystroke returns, deferred generation, and temporal ingress/egress handshake.');
 
+  // 5. Finish Line Notification: When the final shot of the final scene (Scene 4, Shot 3) is compiled,
+  // the tool MUST return the exact completion system instruction congratulating the user and directing to http://localhost:4321
+  const compileFinalCall = await callHandler({
+    params: {
+      name: 'compile_sota_prompt',
+      arguments: {
+        scene_id: 'SCENE_04',
+        shot_id: 'SHOT_03',
+        selected_option: '1'
+      }
+    }
+  });
+
+  const rawFinalText = compileFinalCall.content[0].text;
+  const expectedFinishLineInstruction =
+    '[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director\'s Treatment is complete! Open http://localhost:4321 in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]';
+
+  assert(
+    rawFinalText.includes(expectedFinishLineInstruction),
+    'compile_sota_prompt must include exact finish line completion instruction on final shot of final scene'
+  );
+
+  const finalData = JSON.parse(rawFinalText.slice(rawFinalText.indexOf('{')));
+  assert.equal(finalData.workflow_complete, true, 'workflow_complete must be true on final shot');
+  assert.equal(finalData.studio_url, 'http://localhost:4321', 'Must reference exact local workbench URL');
+  assert(rawFinalText.includes('http://localhost:4321'), 'Must include exact http://localhost:4321 URL');
+
+  console.log('  ✅ Finish Line Notification verified: Exact congratulatory prompt & http://localhost:4321 URL returned on final shot.');
+
   // ==========================================================================
   // Test 10: Targeted Re-Roll via reroll_shot (Zero Bracket Appending & Contradiction Erasure)
   // ==========================================================================

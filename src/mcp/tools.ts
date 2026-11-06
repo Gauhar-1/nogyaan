@@ -813,6 +813,7 @@ export function registerMcpTools(
       // Tool B: compile_sota_prompt (SOTA Video Physics & Ingress/Egress)
       // Single-vector camera, spatial anchoring, posture & eyeline, and temporal handshake.
       // Saves directly to local JSON state.
+      // Detects workflow completion on the final shot of the final scene (e.g., Scene 4, Shot 3).
       // ======================================================================
       if (name === 'compile_sota_prompt') {
         const result = await dpPitch.compileSotaPrompt({
@@ -823,12 +824,52 @@ export function registerMcpTools(
           last_shot_egress: input.last_shot_egress
         });
 
-        const systemMsg =
+        const currentState = stateManager.getState();
+        const scenes = currentState.scenes || [];
+        const resolvedSceneId = result.scene_id || input.scene_id;
+        const resolvedShotId = result.shot_id || input.shot_id || 'SHOT_01';
+        const currentScene = scenes.find((s) => s.scene_id.toLowerCase() === resolvedSceneId.toLowerCase());
+        const shotCount = currentScene ? Object.keys(currentScene.shots || {}).length : 0;
+
+        // Detect workflow completion: final shot of the final scene (e.g. Scene 4, Shot 3)
+        const isScene4 =
+          /scene[_-]?0?4\b/i.test(resolvedSceneId) ||
+          resolvedSceneId.toLowerCase().includes('climax') ||
+          resolvedSceneId.toLowerCase().includes('scene_4');
+        const isLastScene =
+          scenes.length > 0 &&
+          (scenes[scenes.length - 1].scene_id.toLowerCase() === resolvedSceneId.toLowerCase() ||
+            scenes.findIndex((s) => s.scene_id.toLowerCase() === resolvedSceneId.toLowerCase()) === scenes.length - 1);
+        const isFinalScene = isScene4 || (scenes.length >= 4 && isLastScene) || input.is_final_scene === true;
+
+        const isShot3OrHigher =
+          /shot[_-]?0?[3-9]\b/i.test(resolvedShotId) ||
+          resolvedShotId.toLowerCase().includes('shot_3') ||
+          resolvedShotId.toLowerCase().includes('shot_03') ||
+          resolvedShotId.toLowerCase().includes('final');
+        const isFinalShot =
+          isShot3OrHigher ||
+          shotCount >= 3 ||
+          input.is_final_shot === true ||
+          input.final_shot === true;
+
+        const isWorkflowComplete = (isFinalScene && isFinalShot) || result.workflow_complete === true;
+
+        const normalSystemMsg =
           '[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
+
+        const completionSystemMsg =
+          '[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director\'s Treatment is complete! Open http://localhost:4321 in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]';
+
+        const systemMsg = isWorkflowComplete ? completionSystemMsg : normalSystemMsg;
 
         const outputData = {
           success: true,
-          message: `SOTA AI prompt compiled and saved for ${result.scene_id} -> ${result.shot_id}. Temporal egress updated.`,
+          message: isWorkflowComplete
+            ? `Final SOTA AI prompt compiled and saved for ${result.scene_id} -> ${result.shot_id}. Storyboard workflow complete!`
+            : `SOTA AI prompt compiled and saved for ${result.scene_id} -> ${result.shot_id}. Temporal egress updated.`,
+          workflow_complete: isWorkflowComplete,
+          studio_url: 'http://localhost:4321',
           scene_id: result.scene_id,
           shot_id: result.shot_id,
           shot: result.shot,
@@ -836,7 +877,9 @@ export function registerMcpTools(
           spatial_memory: result.spatial_memory,
           system_instruction: systemMsg,
           _systemDirective: {
-            instruction: systemMsg
+            instruction: systemMsg,
+            workflow_complete: isWorkflowComplete,
+            studio_url: 'http://localhost:4321'
           }
         };
 
@@ -903,8 +946,41 @@ export function registerMcpTools(
           spatialFacts
         );
 
-        const systemMsg =
+        const currentState = stateManager.getState();
+        const scenes = currentState.scenes || [];
+        const currentScene = scenes.find((s) => s.scene_id.toLowerCase() === input.scene_id.toLowerCase());
+        const shotCount = currentScene ? Object.keys(currentScene.shots || {}).length : 0;
+
+        const isScene4 =
+          /scene[_-]?0?4\b/i.test(input.scene_id) ||
+          input.scene_id.toLowerCase().includes('climax') ||
+          input.scene_id.toLowerCase().includes('scene_4');
+        const isLastScene =
+          scenes.length > 0 &&
+          (input.scene_id.toLowerCase() === scenes[scenes.length - 1].scene_id.toLowerCase() ||
+            scenes.findIndex((s) => s.scene_id.toLowerCase() === input.scene_id.toLowerCase()) === scenes.length - 1);
+        const isFinalScene = isScene4 || (scenes.length >= 4 && isLastScene) || input.is_final_scene === true;
+
+        const isShot3OrHigher =
+          /shot[_-]?0?[3-9]\b/i.test(input.shot_id) ||
+          input.shot_id.toLowerCase().includes('shot_3') ||
+          input.shot_id.toLowerCase().includes('shot_03') ||
+          input.shot_id.toLowerCase().includes('final');
+        const isFinalShot =
+          isShot3OrHigher ||
+          shotCount >= 3 ||
+          input.is_final_shot === true ||
+          input.final_shot === true;
+
+        const isWorkflowComplete = isFinalScene && isFinalShot;
+
+        const normalSystemMsg =
           '[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
+
+        const completionSystemMsg =
+          '[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director\'s Treatment is complete! Open http://localhost:4321 in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]';
+
+        const systemMsg = isWorkflowComplete ? completionSystemMsg : normalSystemMsg;
 
         return {
           content: [
@@ -913,7 +989,11 @@ export function registerMcpTools(
               text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   success: true,
-                  message: `Shot option locked for ${input.scene_id} -> ${input.shot_id}. Spatial memory silently updated.`,
+                  message: isWorkflowComplete
+                    ? `Final shot option locked for ${input.scene_id} -> ${input.shot_id}. Storyboard workflow complete!`
+                    : `Shot option locked for ${input.scene_id} -> ${input.shot_id}. Spatial memory silently updated.`,
+                  workflow_complete: isWorkflowComplete,
+                  studio_url: 'http://localhost:4321',
                   scene_id: input.scene_id,
                   shot_id: input.shot_id,
                   locked_shot: shotToLock,

@@ -487,3 +487,4 @@ export function downloadTreatmentPdf(
     doc.save(filename);
   }
 }
+
