@@ -103,15 +103,21 @@ export const DirectorsTreatmentApp: React.FC = () => {
             margin: 15mm;
             size: portrait;
           }
-          body, html {
+          html, body,
+          .h-screen, .max-h-screen, .overflow-hidden,
+          [class*="h-screen"], [class*="max-h-screen"], [class*="overflow-hidden"], [class*="overflow-y-auto"],
+          main, aside, div {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
+          html, body {
             background: #000000 !important;
             color: #FFFFFF !important;
-            overflow: visible !important;
-            height: auto !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .no-print, button {
+          .no-print, button, .toast-msg {
             display: none !important;
           }
           aside {
@@ -119,8 +125,10 @@ export const DirectorsTreatmentApp: React.FC = () => {
             max-width: 100% !important;
             height: auto !important;
             position: static !important;
+            overflow: visible !important;
             border-right: none !important;
             border-bottom: 2px solid #333333 !important;
+            margin-bottom: 24px !important;
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
@@ -129,11 +137,19 @@ export const DirectorsTreatmentApp: React.FC = () => {
             height: auto !important;
             overflow: visible !important;
             padding: 0 !important;
+            display: block !important;
           }
-          section, .shot-card-container {
+          section {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            margin-bottom: 24px !important;
+            display: block !important;
+          }
+          .shot-card-container {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             margin-bottom: 20px !important;
+            display: block !important;
           }
           .ai-payload-term {
             display: block !important;
@@ -144,9 +160,9 @@ export const DirectorsTreatmentApp: React.FC = () => {
       {/* ==================================================================== */}
       {/* 1. STICKY SIDEBAR: ASSET BIBLE & PERSISTENT RULES (Read-Only 25%)    */}
       {/* ==================================================================== */}
-      <aside className="w-1/4 min-w-[300px] max-w-[380px] h-screen bg-neutral-950 border-r border-neutral-800 flex flex-col flex-shrink-0 z-20">
+      <aside className="w-1/4 min-w-[300px] max-w-[380px] h-screen bg-neutral-950 border-r border-neutral-800 flex flex-col flex-shrink-0 z-20 overflow-y-auto">
         {/* Sidebar Header */}
-        <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
+        <div className="sticky top-0 bg-neutral-950 z-10 p-5 border-b border-neutral-800 flex items-center justify-between">
           <div>
             <h2 className="text-xs font-mono font-bold tracking-widest text-white uppercase">
               ASSET LOCKER
@@ -186,7 +202,7 @@ export const DirectorsTreatmentApp: React.FC = () => {
         )}
 
         {/* Scrollable Bible Contents */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="p-5 space-y-4">
           {/* Hero Product Card */}
           <div className="bg-neutral-900 border border-neutral-800 rounded p-4">
             <div className="flex items-center justify-between mb-2">

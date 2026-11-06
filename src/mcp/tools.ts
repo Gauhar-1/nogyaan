@@ -391,7 +391,7 @@ export function registerMcpTools(
         {
           name: 'reroll_node',
           description:
-            'Targeted Re-Roll: Modifies ONLY an isolated node (scene or shot ID) in nogyaan-state.json based on specific user feedback, preserving all other locked scenes and shots with zero token burn.',
+            'Targeted Re-Roll: Modifies ONLY an isolated node (scene or shot ID) in nogyaan-state.json based on specific user feedback, completely rewriting the node from scratch without bracketed notes.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -405,6 +405,37 @@ export function registerMcpTools(
               }
             },
             required: ['node_id', 'user_feedback']
+          }
+        },
+        {
+          name: 'reroll_shot',
+          description:
+            'Targeted Shot Re-Roll: Completely rewrites the sota_payload and visual_intent of an isolated shot from scratch incorporating user instructions, without bracketed notes and without modifying untouched shots.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scene_id: {
+                type: 'string',
+                description: 'Scene identifier (e.g., "SCENE_01")'
+              },
+              shot_id: {
+                type: 'string',
+                description: 'Shot identifier (e.g., "SHOT_01")'
+              },
+              node_id: {
+                type: 'string',
+                description: 'Composite node identifier (e.g. "SCENE_01:SHOT_01")'
+              },
+              user_feedback: {
+                type: 'string',
+                description: 'Directorial refinement feedback for completely rewriting the shot'
+              },
+              direction: {
+                type: 'string',
+                description: 'Alternative parameter for user direction'
+              }
+            },
+            required: []
           }
         },
         {
@@ -920,24 +951,41 @@ export function registerMcpTools(
         };
       }
 
-      if (name === 'reroll_node') {
+      if (name === 'reroll_node' || name === 'reroll_shot') {
+        const targetNodeId =
+          input.node_id ||
+          (input.scene_id && input.shot_id ? `${input.scene_id}:${input.shot_id}` : input.shot_id || input.scene_id);
+        const feedback = input.user_feedback || input.direction || input.notes;
+
+        if (!targetNodeId) {
+          throw new Error('Target node identifier (node_id or scene_id/shot_id) is required for re-roll.');
+        }
+        if (!feedback) {
+          throw new Error('user_feedback or direction string is required for re-roll.');
+        }
+
         const result = await rerollService.rerollNode({
-          node_id: input.node_id,
-          user_feedback: input.user_feedback
+          node_id: targetNodeId,
+          user_feedback: feedback
         });
+
+        const systemMsg =
+          '[SYSTEM: Shot completely rewritten. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want further refinement, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(
+              text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   success: true,
-                  message: `Targeted re-roll applied to node "${input.node_id}".`,
-                  result
+                  message: `Targeted re-roll applied to node "${targetNodeId}". SOTA prompt and visual intent completely rewritten without bracketed notes.`,
+                  result,
+                  system_instruction: systemMsg
                 },
                 null,
                 2
-              )
+              )}`
             }
           ]
         };

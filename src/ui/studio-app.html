@@ -193,12 +193,18 @@
         size: A4 portrait;
       }
 
+      html, body,
+      .h-screen, .max-h-screen, .overflow-hidden,
+      [class*="h-screen"], [class*="max-h-screen"], [class*="overflow-hidden"], [class*="overflow-y-auto"],
+      #treatment-root, main, aside, div {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+
       html, body {
         background: #000000 !important;
         color: #FFFFFF !important;
-        height: auto !important;
-        min-height: auto !important;
-        overflow: visible !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
@@ -393,10 +399,10 @@
         // ====================================================================
         var sidebar = e('aside', {
           key: 'sidebar',
-          className: 'w-1/4 min-w-[290px] max-w-[360px] h-[calc(100vh-52px)] bg-neutral-950 border-r border-neutral-800 flex flex-col flex-shrink-0 z-20'
+          className: 'w-1/4 min-w-[290px] max-w-[360px] h-[calc(100vh-52px)] bg-neutral-950 border-r border-neutral-800 flex flex-col flex-shrink-0 z-20 overflow-y-auto'
         }, [
           // Header
-          e('div', { key: 'sb-hdr', className: 'p-5 border-b border-neutral-800 flex items-center justify-between' }, [
+          e('div', { key: 'sb-hdr', className: 'sticky top-0 bg-neutral-950 z-10 p-5 border-b border-neutral-800 flex items-center justify-between' }, [
             e('div', { key: 'title-grp' }, [
               e('h2', { key: 'h2', className: 'text-xs font-bold tracking-widest text-white uppercase font-mono' }, 'ASSET LOCKER'),
               e('span', { key: 'id', className: 'text-[10px] text-neutral-500 font-mono block mt-0.5' }, 'SPECIFICATION BIBLE')
@@ -420,7 +426,7 @@
           ]),
 
           // Scrollable Cards List
-          e('div', { key: 'cards-scroll', className: 'flex-1 overflow-y-auto p-4 space-y-4' }, [
+          e('div', { key: 'cards-scroll', className: 'p-4 space-y-4' }, [
             // Hero Product Card
             e('div', { key: 'prod-card', className: 'bg-neutral-900 border border-neutral-800 rounded p-4' }, [
               e('div', { key: 'hdr', className: 'flex items-center justify-between mb-2' }, [

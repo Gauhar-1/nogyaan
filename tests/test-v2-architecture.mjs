@@ -51,6 +51,9 @@ try {
   const hardStopDirective = 'CRITICAL: You are an interactive DP. You must only pitch 3 options for the CURRENT single shot. Do NOT generate the next shot. Do NOT generate a prompt for the whole scene. Output the 3 options as JSON, then STOP and wait for the user\'s selection. Do not attempt to complete the storyboard.';
   assert(DP_SYSTEM_PROMPT.includes(hardStopDirective), 'DP_SYSTEM_PROMPT must contain the exact hard stop directive');
 
+  const rerollRewriteRule = 'CRITICAL: When rerolling, you must COMPLETELY REWRITE the sota_payload and visual_intent from scratch to naturally weave in the user\'s new instructions. NEVER append bracketed notes like [Direction: ...]. Ensure old, contradictory physical facts are completely erased from the new text.';
+  assert(REROLL_SYSTEM_PROMPT.includes(rerollRewriteRule), 'REROLL_SYSTEM_PROMPT must contain the rewrite rule without bracket appending');
+
   console.log('  ✅ All system prompts strictly enforce Zero-Yap constraint and Hard Stop directive.');
 
   // ==========================================================================
@@ -268,6 +271,13 @@ try {
   const afterScene3 = JSON.stringify(stateManager.getScene('SCENE_03'));
   assert.equal(beforeScene3, afterScene3, 'Scene 3 must remain untouched during Scene 2 shot re-roll');
 
+  // Verify no bracketed notes appended
+  const updatedPrmpt = rerollResult.updated_node.prmpt || rerollResult.updated_node.sota_payload;
+  const updatedVisual = rerollResult.updated_node.txt || rerollResult.updated_node.visual_intent;
+  assert(!updatedPrmpt.includes('[Direction:'), 'Must not append [Direction: ...] in sota_payload or prmpt');
+  assert(!updatedVisual.includes('[Direction:'), 'Must not append [Direction: ...] in visual_intent or txt');
+  assert(!updatedPrmpt.includes('[Note applied:'), 'Must not append bracketed notes');
+
   console.log('  ✅ Phase 5 Targeted Re-Roll modifies isolated node with zero cross-node burn.');
 
   // ==========================================================================
@@ -448,6 +458,34 @@ try {
   assert(Array.isArray(sc1Updated.spatial_memory), 'Scene 1 must maintain spatial_memory array');
 
   console.log('  ✅ SOTA DP Suite verified: Single-keystroke returns, deferred generation, and temporal ingress/egress handshake.');
+
+  // ==========================================================================
+  // Test 10: Targeted Re-Roll via reroll_shot (Zero Bracket Appending & Contradiction Erasure)
+  // ==========================================================================
+  console.log('\n🔹 Test 10: Targeted Re-Roll (reroll_shot Tool & Zero Bracket Appending)');
+  assert(registeredToolNames.includes('reroll_shot'), 'reroll_shot must be registered as MCP tool');
+
+  const rerollCall = await callHandler({
+    params: {
+      name: 'reroll_shot',
+      arguments: {
+        scene_id: 'SCENE_01',
+        shot_id: 'SHOT_01',
+        direction: 'Make Sharma stand upright and hold the brass cup instead of sitting'
+      }
+    }
+  });
+
+  const rawReroll = rerollCall.content[0].text;
+  assert(rawReroll.includes('[SYSTEM: Shot completely rewritten. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want further refinement, tell them to type "R" with their notes. Keep your response under 2 sentences.]'));
+
+  const rerollData = JSON.parse(rawReroll.slice(rawReroll.indexOf('{')));
+  assert.equal(rerollData.success, true);
+  const rerolledShot = rerollData.result.updated_node;
+  assert(!rerolledShot.visual_intent.includes('[Direction:'), 'Must not append [Direction: ...]');
+  assert(!rerolledShot.sota_payload.includes('[Direction:'), 'Must not append [Direction: ...]');
+  assert(!rerolledShot.sota_payload.toLowerCase().includes('seated'), 'Old contradictory posture (seated) must be erased');
+  console.log('  ✅ reroll_shot successfully rewrote shot without bracketed notes and erased contradictory facts.');
 
   // Clean up
   fs.rmSync(tmpDir, { recursive: true, force: true });

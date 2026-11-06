@@ -93,15 +93,16 @@ export class RerollService {
     const cur: any = currentScript;
     if (cur.txt !== undefined) {
       // ScriptPitch
+      const rewritten = this.rewriteTextNaturally(cur.txt || '', userFeedback);
       return AnyLockedScriptSchema.parse({
         id: cur.id || 'A',
         style: cur.style || 'Heartfelt',
-        txt: `${cur.txt.trim()} [Note applied: ${userFeedback.trim()}]`
+        txt: rewritten
       });
     }
 
     // Verbose ScriptOption fallback
-    const newNarrative = `${cur.narrative_block?.trim() || ''} [Note applied: ${userFeedback.trim()}]`;
+    const newNarrative = this.rewriteTextNaturally(cur.narrative_block || '', userFeedback);
     const newDialogue = userFeedback.toLowerCase().includes('dialogue') || userFeedback.toLowerCase().includes('say')
       ? `${cur.audio_stem?.dialogue || ''} (Refined: "${userFeedback.replace(/["']/g, '')}")`
       : cur.audio_stem?.dialogue || null;
@@ -130,46 +131,93 @@ export class RerollService {
       }
     }
 
-    // Heuristic refinement for ShotPitch / ShotOption / ShotNode
+    // Heuristic refinement for ShotPitch / ShotOption / ShotNode:
+    // Completely rewrite and naturally integrate new instructions, NEVER appending bracketed notes.
     const cur: any = currentShot;
     if (cur.prmpt !== undefined) {
       // ShotPitch
-      const newPrmpt = `${cur.prmpt.trim()}, [Direction: ${userFeedback.trim()}]`
+      const newTxt = this.rewriteTextNaturally(cur.txt || '', userFeedback);
+      const newPrmpt = this.rewriteTextNaturally(cur.prmpt || '', userFeedback)
         .replace(/\b(live-action|live action|anime|pixar|3d|photorealistic)\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
         .trim();
       return AnyLockedShotSchema.parse({
         id: cur.id || 'A',
         style: cur.style || 'Auteur',
-        txt: `${cur.txt.trim()} (Directorial adjustment: ${userFeedback.trim()})`,
+        txt: newTxt,
         prmpt: newPrmpt
       });
     }
 
     if (cur.sota_payload !== undefined || (cur.visual_intent !== undefined && !cur.ai_payload)) {
       // ShotNode
+      const baseIntent = cur.visual_intent || cur.txt || '';
       const basePayload = cur.sota_payload || cur.ai_payload || '';
-      const newPayload = `${basePayload.trim()}, [Direction: ${userFeedback.trim()}]`
+      const newIntent = this.rewriteTextNaturally(baseIntent, userFeedback);
+      const newPayload = this.rewriteTextNaturally(basePayload, userFeedback)
         .replace(/\b(live-action|live action|anime|pixar|3d|photorealistic)\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
         .trim();
       return AnyLockedShotSchema.parse({
         id: cur.id || 'A',
         style: cur.style || 'Auteur',
-        visual_intent: `${cur.visual_intent?.trim() || ''} (Directorial adjustment: ${userFeedback.trim()})`,
+        visual_intent: newIntent,
         sota_payload: newPayload
       });
     }
 
     // Verbose ShotOption fallback
-    const newPayload = `${cur.ai_payload?.trim() || ''}, [Direction: ${userFeedback.trim()}]`
+    const newIntent = this.rewriteTextNaturally(cur.visual_intent || '', userFeedback);
+    const newPayload = this.rewriteTextNaturally(cur.ai_payload || '', userFeedback)
       .replace(/\b(live-action|live action|anime|pixar|3d|photorealistic)\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
       .trim();
 
     return AnyLockedShotSchema.parse({
       option_id: cur.option_id || 'OPT_1',
       director_persona: cur.director_persona || 'Intimate Auteur',
-      visual_intent: `${cur.visual_intent?.trim() || ''} (Refinement: ${userFeedback.trim()})`,
+      visual_intent: newIntent,
       ai_payload: newPayload
     });
+  }
+
+  /**
+   * Completely rewrites base text incorporating new user directions naturally,
+   * explicitly removing bracketed notes and contradictory physical/camera facts.
+   */
+  private rewriteTextNaturally(baseText: string, instruction: string): string {
+    const cleanInst = instruction
+      .trim()
+      .replace(/^\[|\]$/g, '')
+      .replace(/^(direction|note|directorial note|refinement):\s*/i, '');
+
+    let rewritten = baseText;
+
+    const requestsStanding = /\b(?:stand|stands|standing|rise|rises|rising|upright)\b/i.test(cleanInst);
+    const requestsSitting = !requestsStanding && /\b(?:sit|sits|seated|sitting)\b/i.test(cleanInst);
+
+    // Erase contradictory physical postures if direction requests standing
+    if (requestsStanding) {
+      rewritten = rewritten.replace(/\b(?:is\s+)?(?:seated|sitting|reclined|rests in chair|in the desk chair)\b/gi, 'standing');
+      rewritten = rewritten.replace(/\bupright seated posture\b/gi, 'standing posture');
+      rewritten = rewritten.replace(/\bseated\b/gi, 'standing');
+    }
+    // Erase contradictory physical postures if direction requests sitting
+    else if (requestsSitting) {
+      rewritten = rewritten.replace(/\b(?:is\s+)?(?:standing|stands|walking|pacing)\b/gi, 'seated');
+      rewritten = rewritten.replace(/\bstanding posture\b/gi, 'seated posture');
+      rewritten = rewritten.replace(/\bstanding\b/gi, 'seated');
+    }
+
+    // Erase any existing bracketed notes like [Direction: ...] or [Note applied: ...]
+    rewritten = rewritten.replace(/\s*\[(?:Direction|Note applied|Note)[^\]]*\]/gi, '');
+    rewritten = rewritten.replace(/\s*\((?:Directorial adjustment|Refinement)[^\)]*\)/gi, '');
+
+    // Seamlessly weave new instruction into prose without brackets
+    const cleanBase = rewritten.trim().replace(/[.,;]+$/, '');
+    const capitalizedInst = cleanInst.charAt(0).toUpperCase() + cleanInst.slice(1).replace(/[.]+$/, '');
+
+    return `${cleanBase}. ${capitalizedInst}.`;
   }
 
   private async callLlmMiniPrompt(
@@ -183,7 +231,7 @@ ${JSON.stringify(targetNode, null, 2)}
 User Direction:
 ${userFeedback}
 
-Rewrite ONLY this target JSON node incorporating the feedback. Output raw minified JSON only.`;
+CRITICAL: When rerolling, you must COMPLETELY REWRITE the sota_payload and visual_intent from scratch to naturally weave in the user's new instructions. NEVER append bracketed notes like [Direction: ...]. Ensure old, contradictory physical facts are completely erased from the new text. Output raw minified JSON only.`;
 
     if (process.env.ANTHROPIC_API_KEY) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {

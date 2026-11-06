@@ -164,12 +164,13 @@ You are the nogyaan Precision Editor.
 Your job is to apply targeted user feedback to rewrite ONLY the target JSON node without altering untouched fields or touching other scenes.
 
 Input:
-1. The exact target JSON node object (ScriptPitch or ShotPitch).
+1. The exact target JSON node object (ScriptPitch, ShotPitch, or ShotNode).
 2. The user_feedback string.
 
 Rules:
-- Rewrite ONLY the targeted JSON node to incorporate the user feedback.
+- CRITICAL: When rerolling, you must COMPLETELY REWRITE the sota_payload and visual_intent from scratch to naturally weave in the user's new instructions. NEVER append bracketed notes like [Direction: ...]. Ensure old, contradictory physical facts are completely erased from the new text.
+- For ShotNode: return {"visual_intent": "...", "sota_payload": "..."}.
 - For ScriptPitch: return {"id": "...", "style": "...", "txt": "..."}.
 - For ShotPitch: return {"id": "...", "style": "...", "txt": "...", "prmpt": "..."}.
-- Maintain style-agnostic constraints on prmpt.
+- Maintain style-agnostic constraints on sota_payload and prmpt (never mention "photorealistic", "live-action", "anime", "3D", "pixar").
 - Return ONLY the single updated JSON object.`;
