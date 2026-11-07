@@ -87,6 +87,76 @@ function parseJsonBody<T = any>(req: http.IncomingMessage): Promise<T> {
 // 1. Studio Web Server (http://localhost:4321) - Zero HTML Entity Corruption
 // ============================================================================
 
+export interface SessionSummary {
+  sessionId: string;
+  filename: string;
+  projectId: string;
+  project_id: string;
+  company?: string;
+  product?: string;
+  stage?: string;
+  core_premise?: string;
+  updatedAt: string;
+  mtime: number;
+  size: number;
+}
+
+export function listAllSessions(): SessionSummary[] {
+  const sessionsDir = sessionService.getSessionsDir();
+  if (!fs.existsSync(sessionsDir)) {
+    return [];
+  }
+
+  const files = fs.readdirSync(sessionsDir);
+  const results: SessionSummary[] = [];
+
+  for (const file of files) {
+    if (!file.endsWith('.json') || file.startsWith('.')) continue;
+    const fullPath = path.join(sessionsDir, file);
+    try {
+      const stat = fs.statSync(fullPath);
+      if (!stat.isFile()) continue;
+
+      const sessionId = path.basename(file, '.json');
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
+      } catch {}
+
+      const projectId = parsed.project_id || parsed.sessionId || sessionId;
+      const company = parsed.company || parsed.brand || '';
+      let product = '';
+      if (typeof parsed.product === 'string') {
+        product = parsed.product;
+      } else if (typeof parsed.assets?.product === 'string') {
+        product = parsed.assets.product;
+      } else if (parsed.assets?.product?.name) {
+        product = parsed.assets.product.name;
+      }
+      const stage = parsed.stage || (parsed.scenes && parsed.scenes.length > 0 ? 'SCENES_DEFINED' : 'INITIAL');
+      const corePremise = parsed.core_premise || parsed.coreTheme?.themePremise || parsed.goal || '';
+
+      results.push({
+        sessionId,
+        filename: file,
+        projectId,
+        project_id: projectId,
+        company,
+        product,
+        stage,
+        core_premise: corePremise,
+        updatedAt: stat.mtime.toISOString(),
+        mtime: stat.mtimeMs,
+        size: stat.size
+      });
+    } catch {}
+  }
+
+  // Sort by mtime descending (most recently modified session first)
+  results.sort((a, b) => b.mtime - a.mtime);
+  return results;
+}
+
 function startStudioServer(port: number = 4321): void {
   const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -101,10 +171,22 @@ function startStudioServer(port: number = 4321): void {
 
     const parsedUrl = new URL(req.url || '/', `http://localhost:${port}`);
 
+    // GET /api/sessions: Lists all saved session files in .nogyaan/sessions/ (most recently modified first)
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/sessions') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      const sessions = listAllSessions();
+      res.end(JSON.stringify(sessions, null, 2));
+      return;
+    }
+
     // API endpoint returning current active session state as raw UTF-8 JSON
     if (parsedUrl.pathname === '/api/graph') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      const requestedId = parsedUrl.searchParams.get('session_id') || undefined;
+      const requestedId =
+        parsedUrl.searchParams.get('session') ||
+        parsedUrl.searchParams.get('session_id') ||
+        parsedUrl.searchParams.get('sessionId') ||
+        undefined;
       let currentSession = null;
       try {
         currentSession = requestedId
@@ -123,19 +205,67 @@ function startStudioServer(port: number = 4321): void {
     // V2 Architecture Endpoints (State, SSE Stream, Pitch & Targeted Re-Roll)
     // ========================================================================
 
-    // 1. Get V2 State (GET /api/v2/state)
-    if (req.method === 'GET' && parsedUrl.pathname === '/api/v2/state') {
+    // 1. Get State (GET /api/state, GET /api/state/:sessionId, GET /api/v2/state, GET /api/v2/state/:sessionId)
+    if (
+      req.method === 'GET' &&
+      (parsedUrl.pathname === '/api/state' ||
+       parsedUrl.pathname.startsWith('/api/state/') ||
+       parsedUrl.pathname === '/api/v2/state' ||
+       parsedUrl.pathname.startsWith('/api/v2/state/'))
+    ) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      const requestedId = parsedUrl.searchParams.get('session_id');
+
+      // Check path param: /api/state/:sessionId or /api/v2/state/:sessionId
+      let requestedId: string | undefined = undefined;
+      const pathMatch = parsedUrl.pathname.match(/^\/api\/(?:v2\/)?state\/(.+)$/);
+      if (pathMatch && pathMatch[1] && pathMatch[1].trim()) {
+        requestedId = decodeURIComponent(pathMatch[1].trim());
+      }
+
+      // Check query param: ?session=..., ?session_id=..., ?sessionId=...
+      if (!requestedId) {
+        requestedId =
+          parsedUrl.searchParams.get('session') ||
+          parsedUrl.searchParams.get('session_id') ||
+          parsedUrl.searchParams.get('sessionId') ||
+          undefined;
+      }
+
+      // If missing from both path and query, fetch most recently modified session
+      if (!requestedId) {
+        const sessions = listAllSessions();
+        if (sessions.length > 0) {
+          requestedId = sessions[0].sessionId;
+        }
+      }
+
       const sm = requestedId ? StateManager.forSession(requestedId) : stateManager;
       res.end(JSON.stringify(sm.getState(), null, 2));
       return;
     }
 
-    // 1.5. Native JSON-to-PDF Export (GET /api/v2/export-pdf or /api/v2/pdf)
-    if (req.method === 'GET' && (parsedUrl.pathname === '/api/v2/export-pdf' || parsedUrl.pathname === '/api/v2/pdf')) {
+    // 1.5. Native JSON-to-PDF Export (GET /api/v2/export-pdf or /api/v2/pdf or /api/export-pdf)
+    if (
+      req.method === 'GET' &&
+      (parsedUrl.pathname === '/api/v2/export-pdf' ||
+       parsedUrl.pathname === '/api/v2/pdf' ||
+       parsedUrl.pathname === '/api/export-pdf' ||
+       parsedUrl.pathname === '/api/pdf')
+    ) {
       try {
-        const requestedId = parsedUrl.searchParams.get('session_id');
+        let requestedId =
+          parsedUrl.searchParams.get('session') ||
+          parsedUrl.searchParams.get('session_id') ||
+          parsedUrl.searchParams.get('sessionId') ||
+          undefined;
+
+        if (!requestedId) {
+          const sessions = listAllSessions();
+          if (sessions.length > 0) {
+            requestedId = sessions[0].sessionId;
+          }
+        }
+
         const sm = requestedId ? StateManager.forSession(requestedId) : stateManager;
         const currentState = sm.getState();
         const pdfBuffer = generateTreatmentPdfBuffer(currentState);
@@ -156,8 +286,11 @@ function startStudioServer(port: number = 4321): void {
       return;
     }
 
-    // 2. Server-Sent Events (SSE) Live Sync Stream (GET /api/v2/events)
-    if (req.method === 'GET' && parsedUrl.pathname === '/api/v2/events') {
+    // 2. Server-Sent Events (SSE) Live Sync Stream (GET /api/v2/events or /api/events)
+    if (
+      req.method === 'GET' &&
+      (parsedUrl.pathname === '/api/v2/events' || parsedUrl.pathname === '/api/events')
+    ) {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -165,14 +298,29 @@ function startStudioServer(port: number = 4321): void {
         'Access-Control-Allow-Origin': '*'
       });
 
+      let requestedId =
+        parsedUrl.searchParams.get('session') ||
+        parsedUrl.searchParams.get('session_id') ||
+        parsedUrl.searchParams.get('sessionId') ||
+        undefined;
+
+      if (!requestedId) {
+        const sessions = listAllSessions();
+        if (sessions.length > 0) {
+          requestedId = sessions[0].sessionId;
+        }
+      }
+
+      const sm = requestedId ? StateManager.forSession(requestedId) : stateManager;
+
       // Send initial handshake and state
       res.write(`: connected\n\n`);
-      res.write(`data: ${JSON.stringify({ type: 'INIT', state: stateManager.getState() })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'INIT', state: sm.getState(), sessionId: requestedId })}\n\n`);
 
       // Subscribe to state changes triggered by MCP tools or UI actions
-      const unsubscribe = stateManager.subscribe((updatedState) => {
+      const unsubscribe = sm.subscribe((updatedState) => {
         try {
-          res.write(`data: ${JSON.stringify({ type: 'STATE_UPDATED', state: updatedState })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'STATE_UPDATED', state: updatedState, sessionId: requestedId })}\n\n`);
         } catch {}
       });
 

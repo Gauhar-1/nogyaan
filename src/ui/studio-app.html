@@ -236,7 +236,9 @@
       const jsPdfClass = window.jspdf && (window.jspdf.jsPDF || window.jspdf);
       if (!jsPdfClass) {
         showToast('DOWNLOADING BLUEPRINT PDF...');
-        window.location.href = '/api/v2/export-pdf';
+        const exportSession = s.project_id || s.sessionId || '';
+        const exportUrl = '/api/v2/export-pdf' + (exportSession ? ('?session=' + encodeURIComponent(exportSession)) : '');
+        window.location.href = exportUrl;
         return;
       }
 
@@ -659,46 +661,164 @@
       const e = React.createElement;
 
       function DirectorsTreatmentViewer() {
+        const [sessions, setSessions] = React.useState([]);
+        const [currentSessionId, setCurrentSessionId] = React.useState(function() {
+          var params = new URLSearchParams(window.location.search);
+          return params.get('session') || params.get('session_id') || params.get('sessionId') || '';
+        });
         const [state, setState] = React.useState(null);
         const [isConnected, setIsConnected] = React.useState(false);
         const [copiedShotId, setCopiedShotId] = React.useState(null);
         const [collapsedPayloads, setCollapsedPayloads] = React.useState({});
 
-        React.useEffect(function() {
-          function loadInitial() {
-            fetch('/api/v2/state')
-              .then(function(res) { return res.json(); })
-              .then(function(data) {
+        const currentSessionRef = React.useRef(currentSessionId);
+        currentSessionRef.current = currentSessionId;
+
+        // Synchronize browser URL query param (?session=...) without full page reload
+        function updateUrlParam(sessionId, push) {
+          if (!sessionId) return;
+          try {
+            var url = new URL(window.location.href);
+            if (url.searchParams.get('session') !== sessionId) {
+              url.searchParams.set('session', sessionId);
+              if (push) {
+                window.history.pushState({ session: sessionId }, '', url.toString());
+              } else {
+                window.history.replaceState({ session: sessionId }, '', url.toString());
+              }
+            }
+          } catch (e) {}
+        }
+
+        // Fetch state for a specific session ID
+        function loadSessionState(sessionId) {
+          var targetUrl = sessionId
+            ? ('/api/v2/state?session=' + encodeURIComponent(sessionId))
+            : '/api/v2/state';
+          return fetch(targetUrl)
+            .then(function(res) {
+              if (!res.ok) throw new Error('State fetch failed: ' + res.status);
+              return res.json();
+            })
+            .then(function(data) {
+              if (data) {
+                if (sessionId && !data.sessionId) data.sessionId = sessionId;
                 setState(data);
                 window.__currentNogyaanState = data;
-              })
-              .catch(function(err) { console.warn('Failed initial state load:', err); });
-          }
-          loadInitial();
+              }
+              return data;
+            })
+            .catch(function(err) {
+              console.warn('Failed to load session state:', err);
+            });
+        }
 
+        // Fetch the list of sessions from /api/sessions
+        function fetchSessionsList() {
+          return fetch('/api/sessions')
+            .then(function(res) {
+              if (!res.ok) throw new Error('Sessions fetch failed');
+              return res.json();
+            })
+            .then(function(list) {
+              if (Array.isArray(list)) {
+                setSessions(list);
+              }
+              return list;
+            })
+            .catch(function(err) {
+              console.warn('Failed to fetch sessions:', err);
+              return [];
+            });
+        }
+
+        // Initial bootstrapping: Read ?session= or fetch /api/sessions and select most recent
+        React.useEffect(function() {
+          var params = new URLSearchParams(window.location.search);
+          var initialSession = params.get('session') || params.get('session_id') || params.get('sessionId') || '';
+
+          fetchSessionsList().then(function(availableSessions) {
+            var targetId = initialSession;
+            if (!targetId && Array.isArray(availableSessions) && availableSessions.length > 0) {
+              // Missing ?session=, load most recently modified session from /api/sessions
+              targetId = availableSessions[0].sessionId;
+              updateUrlParam(targetId, false);
+            }
+
+            if (targetId) {
+              setCurrentSessionId(targetId);
+            }
+
+            loadSessionState(targetId);
+          });
+
+          // Handle browser back/forward buttons
+          function handlePopState() {
+            var p = new URLSearchParams(window.location.search);
+            var popId = p.get('session') || p.get('session_id') || p.get('sessionId') || '';
+            if (popId && popId !== currentSessionRef.current) {
+              setCurrentSessionId(popId);
+              loadSessionState(popId);
+            }
+          }
+          window.addEventListener('popstate', handlePopState);
+          return function() {
+            window.removeEventListener('popstate', handlePopState);
+          };
+        }, []);
+
+        // SSE Live Stream Subscription - reactive to currentSessionId
+        React.useEffect(function() {
+          var sseUrl = currentSessionId
+            ? ('/api/v2/events?session=' + encodeURIComponent(currentSessionId))
+            : '/api/v2/events';
           var evtSource;
+
           try {
-            evtSource = new EventSource('/api/v2/events');
-            evtSource.onopen = function() { setIsConnected(true); };
+            evtSource = new EventSource(sseUrl);
+            evtSource.onopen = function() {
+              setIsConnected(true);
+            };
             evtSource.onmessage = function(ev) {
               try {
                 var payload = JSON.parse(ev.data);
                 if (payload.type === 'INIT' || payload.type === 'STATE_UPDATED') {
-                  setState(payload.state);
-                  window.__currentNogyaanState = payload.state;
+                  if (!payload.sessionId || !currentSessionRef.current || payload.sessionId === currentSessionRef.current) {
+                    setState(payload.state);
+                    window.__currentNogyaanState = payload.state;
+                  }
                 }
               } catch (err) {}
             };
-            evtSource.onerror = function() { setIsConnected(false); };
+            evtSource.onerror = function() {
+              setIsConnected(false);
+            };
           } catch (err) {
-            var interval = setInterval(loadInitial, 3000);
-            return function() { clearInterval(interval); };
+            setIsConnected(false);
           }
 
           return function() {
-            if (evtSource) evtSource.close();
+            if (evtSource) {
+              evtSource.close();
+              setIsConnected(false);
+            }
           };
-        }, []);
+        }, [currentSessionId]);
+
+        function handleSessionChange(newSessionId) {
+          if (!newSessionId || newSessionId === currentSessionId) return;
+          setCurrentSessionId(newSessionId);
+          updateUrlParam(newSessionId, true);
+          loadSessionState(newSessionId);
+        }
+
+        function handleRefreshSessions() {
+          fetchSessionsList().then(function(list) {
+            if (Array.isArray(list)) {
+              showToast('SESSIONS REFRESHED (' + list.length + ' FOUND)');
+            }
+          });
+        }
 
         function handleCopy(shotId, payload) {
           var med = (state && state.global_medium) || 'Live-Action Cinematic';
@@ -755,6 +875,61 @@
             e('span', { key: 'live-badge', className: 'text-[10px] font-mono px-2 py-0.5 rounded border border-neutral-800 bg-neutral-900 text-neutral-400 uppercase tracking-widest' },
               isConnected ? 'LIVE SSE' : 'OFFLINE'
             )
+          ]),
+
+          // Dynamic Session Switcher (Strict Monochrome Brutalist)
+          e('div', { key: 'session-switcher-box', className: 'p-4 border-b border-neutral-800 bg-neutral-950' }, [
+            e('div', { key: 'sess-lbl-row', className: 'flex items-center justify-between mb-2' }, [
+              e('span', { key: 'lbl', className: 'text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-widest' }, 'ACTIVE SESSION'),
+              e('span', { key: 'cnt', className: 'text-[10px] font-mono text-neutral-500' },
+                sessions.length > 0 ? (sessions.length + ' AVAILABLE') : 'STANDALONE'
+              )
+            ]),
+            e('div', { key: 'select-box', className: 'relative' }, [
+              e('select', {
+                key: 'session-select',
+                value: currentSessionId || '',
+                onChange: function(evt) { handleSessionChange(evt.target.value); },
+                className: 'w-full bg-neutral-900 border border-neutral-700 text-white font-mono text-xs rounded px-2.5 py-2 focus:outline-none focus:border-white appearance-none cursor-pointer pr-8'
+              },
+                (function() {
+                  var optionsList = sessions.slice();
+                  if (currentSessionId && !optionsList.some(function(s) { return s.sessionId === currentSessionId; })) {
+                    optionsList.unshift({
+                      sessionId: currentSessionId,
+                      projectId: currentSessionId,
+                      product: 'Active Project'
+                    });
+                  }
+                  if (optionsList.length === 0) {
+                    return [e('option', { key: 'empty', value: '' }, 'NO ACTIVE SESSIONS')];
+                  }
+                  return optionsList.map(function(s) {
+                    var label = s.sessionId;
+                    if (s.product) {
+                      label += ' [' + s.product + ']';
+                    } else if (s.company) {
+                      label += ' [' + s.company + ']';
+                    }
+                    return e('option', { key: s.sessionId, value: s.sessionId, className: 'bg-neutral-900 text-white font-mono' }, label);
+                  });
+                })()
+              ),
+              e('span', {
+                key: 'select-caret',
+                className: 'pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 font-mono text-[10px]'
+              }, 'v')
+            ]),
+            e('div', { key: 'sess-footer-row', className: 'mt-2 flex items-center justify-between text-[10px] font-mono text-neutral-500' }, [
+              e('span', { key: 'active-badge', className: 'truncate max-w-[190px]' },
+                currentSessionId ? ('ID: ' + currentSessionId) : 'DEFAULT WORKSPACE'
+              ),
+              e('button', {
+                key: 'btn-refresh',
+                onClick: handleRefreshSessions,
+                className: 'text-neutral-400 hover:text-white uppercase tracking-wider text-[9px] underline cursor-pointer'
+              }, '[REFRESH]')
+            ])
           ]),
 
           // Global Render Medium Spec (Read-Only)

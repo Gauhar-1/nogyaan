@@ -499,7 +499,7 @@ try {
 
   const rawFinalText = compileFinalCall.content[0].text;
   const expectedFinishLineInstruction =
-    '[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director\'s Treatment is complete! Open http://localhost:4321 in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]';
+    `[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director's Treatment is complete! Open http://localhost:4321/?session=${testSessionId} in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]`;
 
   assert(
     rawFinalText.includes(expectedFinishLineInstruction),
@@ -508,8 +508,8 @@ try {
 
   const finalData = JSON.parse(rawFinalText.slice(rawFinalText.indexOf('{')));
   assert.equal(finalData.workflow_complete, true, 'workflow_complete must be true on final shot');
-  assert.equal(finalData.studio_url, 'http://localhost:4321', 'Must reference exact local workbench URL');
-  assert(rawFinalText.includes('http://localhost:4321'), 'Must include exact http://localhost:4321 URL');
+  assert.equal(finalData.studio_url, `http://localhost:4321/?session=${testSessionId}`, 'Must reference dynamic local workbench URL with session');
+  assert(rawFinalText.includes(`http://localhost:4321/?session=${testSessionId}`), 'Must include dynamic http://localhost:4321/?session= URL');
 
   console.log('  ✅ Finish Line Notification verified: Exact congratulatory prompt & http://localhost:4321 URL returned on final shot.');
 

@@ -900,13 +900,15 @@ export function registerMcpTools(
         }
 
         const isComplete = branchResult.session.stage === 'LOCK_ASSETS';
+        const dynamicStudioUrl = `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`;
         const systemMsg = isComplete
-          ? '[SYSTEM: Scene 4 Climax locked. Call "extract_active_assets" to extract visual assets and tag scenes. Tell the user to type "N" to begin shot visual concepts. Keep your response under 2 sentences.]'
+          ? `[SYSTEM: Scene 4 Climax locked. Call "extract_active_assets" to extract visual assets and tag scenes. Tell the user to type "N" to begin shot visual concepts. View live treatment at ${dynamicStudioUrl}. Keep your response under 2 sentences.]`
           : `[SYSTEM: Scene ${validated.scene_number || 1} locked. Propose 3 options for the next beat. Ask the user to reply ONLY with "1", "2", or "3" (or "R" to regenerate). Keep your response under 2 sentences.]`;
 
         const outputData = {
           success: true,
           sessionId: branchResult.session.sessionId,
+          studio_url: dynamicStudioUrl,
           currentStage: branchResult.session.stage,
           prunedCount: branchResult.session.prunedCount,
           isNarrativeComplete: isComplete,
@@ -914,7 +916,10 @@ export function registerMcpTools(
           continuityBridge: branchResult.continuityBridge,
           dialogueLanguageRule: languageRule,
           system_instruction: systemMsg,
-          _systemDirective: branchResult.directive
+          _systemDirective: {
+            ...branchResult.directive,
+            studio_url: dynamicStudioUrl
+          }
         };
 
         let formattedText = JSON.stringify(outputData, null, 2);
@@ -1205,12 +1210,13 @@ export function registerMcpTools(
           validated.final_shot === true;
 
         const isWorkflowComplete = (isFinalScene && isFinalShot) || result.workflow_complete === true;
+        const dynamicStudioUrl = `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`;
 
         const normalSystemMsg =
           '[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
 
         const completionSystemMsg =
-          '[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director\'s Treatment is complete! Open http://localhost:4321 in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]';
+          `[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director's Treatment is complete! Open ${dynamicStudioUrl} in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]`;
 
         const systemMsg = isWorkflowComplete ? completionSystemMsg : normalSystemMsg;
 
@@ -1220,7 +1226,7 @@ export function registerMcpTools(
             ? `Final SOTA AI prompt compiled and saved for ${result.scene_id} -> ${result.shot_id}. Storyboard workflow complete!`
             : `SOTA AI prompt compiled and saved for ${result.scene_id} -> ${result.shot_id}. Temporal egress updated.`,
           workflow_complete: isWorkflowComplete,
-          studio_url: 'http://localhost:4321',
+          studio_url: dynamicStudioUrl,
           scene_id: result.scene_id,
           shot_id: result.shot_id,
           shot: result.shot,
@@ -1230,7 +1236,7 @@ export function registerMcpTools(
           _systemDirective: {
             instruction: systemMsg,
             workflow_complete: isWorkflowComplete,
-            studio_url: 'http://localhost:4321'
+            studio_url: dynamicStudioUrl
           }
         };
 
@@ -1348,7 +1354,7 @@ export function registerMcpTools(
                     ? `Final shot option locked for ${validated.scene_id} -> ${validated.shot_id}. Storyboard workflow complete!`
                     : `Shot option locked for ${validated.scene_id} -> ${validated.shot_id}. Spatial memory silently updated.`,
                   workflow_complete: isWorkflowComplete,
-                  studio_url: 'http://localhost:4321',
+                  studio_url: `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`,
                   scene_id: validated.scene_id,
                   shot_id: validated.shot_id,
                   locked_shot: shotToLock,
