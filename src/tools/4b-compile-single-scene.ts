@@ -17,7 +17,7 @@ export const cameraSpecInputSchema = z.object({
 });
 
 export const compileSingleSceneSchema = z.object({
-  session_id: z.string().optional().describe('Target session ID'),
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
   scene_number: z.number().int().positive().describe('Scene number (1 to 4)'),
   duration_seconds: z.number().positive().default(5).describe('Take duration in seconds (4-8s)'),
   act_title: z.string().optional().describe('Act title (e.g., "Act I — Setup")'),

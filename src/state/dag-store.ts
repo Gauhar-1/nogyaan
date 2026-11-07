@@ -311,7 +311,7 @@ export type SceneShot = z.infer<typeof sceneShotSchema>;
 
 export const storyGraphSchema = z.object({
   version: z.literal("1.0.0").default("1.0.0"),
-  projectId: z.string().default("project-default"),
+  projectId: z.string().min(1, "projectId/session_id is required"),
   brand: z.string().default("brand-default"),
   currentStage: z.enum(FSM_STAGES).default("CORE_THEME"),
   brief: storyBriefSchema.nullable().default(null),
@@ -375,12 +375,25 @@ export function sanitizeObjectForHtml<T>(val: T): T {
 export class DAGStore {
   private baseDir: string;
   private storageDir: string;
+  private sessionsDir: string;
+  private sessionId?: string;
   private filePath: string;
 
-  constructor(baseDir?: string) {
+  constructor(baseDir?: string, sessionId?: string) {
     this.baseDir = baseDir ? path.resolve(baseDir) : getWorkspaceDir();
     this.storageDir = getStorageDir(this.baseDir);
-    this.filePath = path.resolve(this.storageDir, "story_graph.json");
+    this.sessionsDir = path.resolve(this.storageDir, "sessions");
+    if (!fs.existsSync(this.sessionsDir)) {
+      try {
+        fs.mkdirSync(this.sessionsDir, { recursive: true });
+      } catch {}
+    }
+    this.sessionId = sessionId;
+    if (this.sessionId) {
+      this.filePath = path.resolve(this.sessionsDir, `${this.sessionId}.json`);
+    } else {
+      this.filePath = path.resolve(this.storageDir, "story_graph.json");
+    }
   }
 
   public getWorkspaceDir(): string {
@@ -395,96 +408,62 @@ export class DAGStore {
     return this.storageDir;
   }
 
+  public getSessionsDir(): string {
+    return this.sessionsDir;
+  }
+
+  public setSessionId(sessionId: string): void {
+    if (!sessionId || !sessionId.trim()) {
+      throw new Error("session_id is required. No session_id was provided.");
+    }
+    this.sessionId = sessionId.trim();
+    this.filePath = path.resolve(this.sessionsDir, `${this.sessionId}.json`);
+  }
+
   /**
-   * Loads story_graph.json or initializes a clean graph.
+   * Loads session graph from .nogyaan/sessions/${session_id}.json.
+   * Throws an error if session_id is missing or file does not exist.
    */
-  public load(): StoryGraph {
-    if (!fs.existsSync(this.filePath)) {
-      const fresh: StoryGraph = {
-        version: "1.0.0",
-        projectId: `proj-${Date.now()}`,
-        brand: "default",
-        currentStage: "CORE_THEME",
-        brief: null,
-        lockedNodes: [],
-        pendingOptions: [],
-        prunedCount: 0,
-        treatment: [],
-        assetRegistry: {
-          characters: {},
-          environments: {},
-          product: null,
-        },
-        activeNodeId: null,
-        nodes: {},
-        linearLineage: [],
-        characters: [],
-        environments: [],
-        shots: [],
-        updatedAt: new Date().toISOString(),
-      };
-      this.save(fresh);
-      return fresh;
+  public load(sessionId?: string): StoryGraph {
+    const targetSessionId = (sessionId || this.sessionId)?.trim();
+    if (!targetSessionId) {
+      throw new Error("session_id is required. No session_id was provided.");
+    }
+
+    const sessionPath = path.resolve(this.sessionsDir, `${targetSessionId}.json`);
+    if (!fs.existsSync(sessionPath)) {
+      throw new Error(
+        `Session not found: "${targetSessionId}". Expected file at ${sessionPath}. Run init_brief first.`
+      );
     }
 
     try {
-      const raw = fs.readFileSync(this.filePath, "utf-8");
+      const raw = fs.readFileSync(sessionPath, "utf-8");
       const parsed = JSON.parse(raw);
       return storyGraphSchema.parse(parsed);
     } catch (err) {
-      console.error(`[DAGStore] Error reading graph from ${this.filePath}:`, err);
-      if (fs.existsSync(this.filePath)) {
-        try {
-          fs.copyFileSync(this.filePath, `${this.filePath}.backup-${Date.now()}`);
-        } catch {}
-      }
-      const fallback: StoryGraph = {
-        version: "1.0.0",
-        projectId: `proj-${Date.now()}`,
-        brand: "default",
-        currentStage: "CORE_THEME",
-        brief: null,
-        lockedNodes: [],
-        pendingOptions: [],
-        prunedCount: 0,
-        treatment: [],
-        assetRegistry: {
-          characters: {},
-          environments: {},
-          product: null,
-        },
-        activeNodeId: null,
-        nodes: {},
-        linearLineage: [],
-        characters: [],
-        environments: [],
-        shots: [],
-        updatedAt: new Date().toISOString(),
-      };
-      this.save(fallback);
-      return fallback;
+      console.error(`[DAGStore] Error reading graph from ${sessionPath}:`, err);
+      throw err;
     }
   }
 
   /**
-   * Persists the story graph to disk atomically.
+   * Persists the story graph strictly to .nogyaan/sessions/${session_id}.json.
    */
   public save(graph: StoryGraph): void {
-    if (!fs.existsSync(this.storageDir)) {
-      fs.mkdirSync(this.storageDir, { recursive: true });
+    if (!graph.projectId || !graph.projectId.trim()) {
+      throw new Error("session_id / projectId is required to save graph.");
+    }
+    if (!fs.existsSync(this.sessionsDir)) {
+      fs.mkdirSync(this.sessionsDir, { recursive: true });
     }
     graph.updatedAt = new Date().toISOString();
-    fs.writeFileSync(this.filePath, JSON.stringify(graph, null, 2), "utf-8");
+    const sessionPath = path.resolve(this.sessionsDir, `${graph.projectId.trim()}.json`);
+    fs.writeFileSync(sessionPath, JSON.stringify(graph, null, 2), "utf-8");
+    this.sessionId = graph.projectId.trim();
+    this.filePath = sessionPath;
 
-    // Also mirror to isolated sessions directory and latest active pointer
     try {
-      const sessionsDir = path.resolve(this.storageDir, "sessions");
-      if (!fs.existsSync(sessionsDir)) {
-        fs.mkdirSync(sessionsDir, { recursive: true });
-      }
-      const sessionPath = path.resolve(sessionsDir, `${graph.projectId}.json`);
-      fs.writeFileSync(sessionPath, JSON.stringify(graph, null, 2), "utf-8");
-
       const latestPath = path.resolve(this.storageDir, "latest-active.json");
       fs.writeFileSync(
         latestPath,
@@ -498,7 +477,7 @@ export class DAGStore {
    * Task 1.1 & 1.2: Initializes brief and resets state machine to CORE_THEME.
    * Scans inputs for premature technical camera terms.
    */
-  public initBrief(brief: StoryBrief, initialOptions?: NarrativeOption[]): StoryGraph {
+  public initBrief(brief: StoryBrief, initialOptions?: NarrativeOption[], sessionId?: string): StoryGraph {
     // Anti-Jargon Gate on brief inputs
     validateNoCameraJargon([
       brief.company,
@@ -517,10 +496,13 @@ export class DAGStore {
 
     const sanitizedBrand = sanitizeBrandOrProjectName(brief.company);
     const parsedBrief = storyBriefSchema.parse(brief);
+    const finalSessionId = (sessionId || `proj-${sanitizedBrand}-${Date.now().toString(36)}`).trim();
+    this.sessionId = finalSessionId;
+    this.filePath = path.resolve(this.sessionsDir, `${finalSessionId}.json`);
 
     const freshGraph: StoryGraph = {
       version: "1.0.0",
-      projectId: `proj-${sanitizedBrand}-${Date.now().toString(36)}`,
+      projectId: finalSessionId,
       brand: sanitizedBrand,
       currentStage: "CORE_THEME",
       brief: parsedBrief,
@@ -550,13 +532,14 @@ export class DAGStore {
    * Locks the overarching Core Campaign Premise and advances CORE_THEME -> SCENE_1_SETUP.
    */
   public lockCoreTheme(input: {
+    sessionId?: string;
     chosenThemeId: "1" | "2" | "3" | string;
     themeTitle: string;
     themePremise: string;
     nextOptions?: NarrativeOption[];
   }): StoryGraph {
     validateNoCameraJargon([input.themeTitle, input.themePremise, input.nextOptions]);
-    const graph = this.load();
+    const graph = this.load(input.sessionId);
     if (graph.currentStage !== "CORE_THEME") {
       throw new Error(
         `FSM STAGE VIOLATION: lock_core_theme can only be called during CORE_THEME stage (current: ${graph.currentStage}).`
@@ -574,6 +557,7 @@ export class DAGStore {
    * Handles 'commit' and 'regenerate' modes with state pruning and FSM stage locking.
    */
   public branchScene(input: {
+    sessionId?: string;
     action: "commit" | "regenerate";
     selectedOptionId?: "1" | "2" | "3" | string;
     nextOptions?: NarrativeOption[];
@@ -581,7 +565,7 @@ export class DAGStore {
     description?: string;
     treatmentProse?: string;
   }): StoryGraph {
-    const graph = this.load();
+    const graph = this.load(input.sessionId);
 
     // 1. FSM Stage Lock: Must be in a narrative branching stage
     if (!NARRATIVE_STAGES.includes(graph.currentStage)) {
@@ -688,52 +672,125 @@ export class DAGStore {
    * Strictly enforces that current stage must be LOCK_ASSETS (after SCENE_4_CLIMAX).
    */
   public lockAssets(input: {
-    characters: CharacterAsset[];
-    environments: LocationAsset[];
-    product?: ProductAsset;
+    sessionId?: string;
+    characters: any[] | Record<string, any>;
+    environments: any[] | Record<string, any>;
+    product?: any;
   }): StoryGraph {
-    const graph = this.load();
+    const graph = this.load(input.sessionId);
 
-    // FSM Stage Lock: Can only be called after SCENE_4_CLIMAX is locked (i.e. stage is LOCK_ASSETS)
-    if (graph.currentStage !== "LOCK_ASSETS") {
+    // Upsert support: Allow execution during LOCK_ASSETS, COMPILE_SHOTS, or COMPLETED
+    const allowedStages = ["LOCK_ASSETS", "COMPILE_SHOTS", "COMPLETED"];
+    if (!allowedStages.includes(graph.currentStage)) {
       throw new Error(
-        `FSM STAGE VIOLATION: Cannot call lock_assets while in stage '${graph.currentStage}'. lock_assets can only be called after SCENE_4_CLIMAX is locked (expected stage: 'LOCK_ASSETS').`
+        `FSM STAGE VIOLATION: Cannot call lock_assets while in stage '${graph.currentStage}'. lock_assets can only be called after SCENE_4_CLIMAX is locked (expected stage: 'LOCK_ASSETS' or 'COMPILE_SHOTS').`
       );
     }
 
-    if (!input.characters || input.characters.length === 0) {
+    // Normalize characters (allow array or record, arbitrary keys and descriptions)
+    let charList: any[] = [];
+    if (Array.isArray(input.characters)) {
+      charList = input.characters;
+    } else if (input.characters && typeof input.characters === 'object') {
+      charList = Object.entries(input.characters).map(([k, v]) => {
+        if (typeof v === 'string') return { assetId: k, name: k, appearancePrompt: v };
+        return { assetId: k, ...(v as any) };
+      });
+    }
+
+    const existingCharRecord = graph.assetRegistry?.characters || {};
+    const charRecord: Record<string, CharacterAsset> = { ...existingCharRecord };
+    const validatedCharacters: CharacterAsset[] = [];
+
+    const effectiveChars = charList.length > 0 ? charList : Object.values(existingCharRecord);
+    if (effectiveChars.length === 0) {
       throw new Error("VALIDATION ERROR: At least one character asset (CHAR_01..N) is required.");
     }
-    if (!input.environments || input.environments.length === 0) {
+
+    for (let idx = 0; idx < effectiveChars.length; idx++) {
+      const c = effectiveChars[idx];
+      const rawId = c.assetId || c.id || `CHAR_0${idx + 1}`;
+      const assetId = String(rawId).toUpperCase();
+      const existing = existingCharRecord[assetId];
+      const name = c.name || existing?.name || `Character ${idx + 1}`;
+      const role = c.role || existing?.role || "Lead";
+      const prompt = c.appearancePrompt || c.prompt || c.description || (typeof c === 'string' ? c : '') || existing?.appearancePrompt || "";
+      const charObj: CharacterAsset = {
+        assetId,
+        name,
+        role,
+        appearancePrompt: prompt,
+        pulidSeed: c.pulidSeed || existing?.pulidSeed || 42,
+        imageUrl: c.imageUrl || existing?.imageUrl || "",
+        metadata: { ...(existing?.metadata || {}), ...(c.metadata || {}), ...(c.category ? { category: c.category } : {}) }
+      };
+      charRecord[assetId] = charObj;
+      validatedCharacters.push(charObj);
+    }
+
+    // Normalize environments (allow array or record, arbitrary keys and descriptions)
+    let envList: any[] = [];
+    if (Array.isArray(input.environments)) {
+      envList = input.environments;
+    } else if (input.environments && typeof input.environments === 'object') {
+      envList = Object.entries(input.environments).map(([k, v]) => {
+        if (typeof v === 'string') return { assetId: k, name: k, environmentPrompt: v };
+        return { assetId: k, ...(v as any) };
+      });
+    }
+
+    const existingEnvRecord = graph.assetRegistry?.environments || {};
+    const envRecord: Record<string, LocationAsset> = { ...existingEnvRecord };
+    const validatedEnvironments: LocationAsset[] = [];
+
+    const effectiveEnvs = envList.length > 0 ? envList : Object.values(existingEnvRecord);
+    if (effectiveEnvs.length === 0) {
       throw new Error("VALIDATION ERROR: At least one environment asset (BG_01..N) is required.");
     }
 
-    // Validate characters
-    const validatedCharacters = input.characters.map((c) => characterAssetSchema.parse(c));
-    const charRecord: Record<string, CharacterAsset> = {};
-    for (const c of validatedCharacters) {
-      charRecord[c.assetId.toUpperCase()] = c;
+    for (let idx = 0; idx < effectiveEnvs.length; idx++) {
+      const e = effectiveEnvs[idx];
+      const rawId = e.assetId || e.id || `BG_0${idx + 1}`;
+      const assetId = String(rawId).toUpperCase();
+      const existing = existingEnvRecord[assetId];
+      const name = e.name || existing?.name || `Environment ${idx + 1}`;
+      const prompt = e.environmentPrompt || e.prompt || e.description || (typeof e === 'string' ? e : '') || existing?.environmentPrompt || "";
+      const lighting = e.lightingProfile || e.lighting || existing?.lightingProfile || "Cinematic atmospheric lighting";
+      const envObj: LocationAsset = {
+        assetId,
+        name,
+        environmentPrompt: prompt,
+        lightingProfile: lighting,
+        imageUrl: e.imageUrl || existing?.imageUrl || "",
+        metadata: { ...(existing?.metadata || {}), ...(e.metadata || {}), ...(e.category ? { category: e.category } : {}) }
+      };
+      envRecord[assetId] = envObj;
+      validatedEnvironments.push(envObj);
     }
 
-    // Validate environments
-    const validatedEnvironments = input.environments.map((e) => locationAssetSchema.parse(e));
-    const envRecord: Record<string, LocationAsset> = {};
-    for (const e of validatedEnvironments) {
-      envRecord[e.assetId.toUpperCase()] = e;
-    }
-
-    // Validate product asset (PROD_01)
+    // Validate product asset (PROD_01) with upsert
     let validatedProduct: ProductAsset;
-    if (input.product) {
-      validatedProduct = productAssetSchema.parse(input.product);
+    const rawProd = input.product !== undefined ? input.product : graph.assetRegistry?.product;
+    if (rawProd) {
+      const prodName = (typeof rawProd === 'object' && rawProd !== null ? rawProd.name : '') || graph.brief?.product || "Hero Product";
+      const prodPrompt = typeof rawProd === 'string'
+        ? rawProd
+        : rawProd.productPrompt || rawProd.packagingAppearance || rawProd.appearance || rawProd.description || `Hero product presentation of ${prodName}`;
+      validatedProduct = {
+        assetId: "PROD_01",
+        name: prodName,
+        productPrompt: prodPrompt,
+        category: (typeof rawProd === 'object' && rawProd !== null ? rawProd.category : '') || "Hero Product",
+        metadata: (typeof rawProd === 'object' && rawProd !== null ? rawProd.metadata : {}) || {}
+      };
     } else {
-      // Auto-construct PROD_01 from locked brief if omitted
-      validatedProduct = productAssetSchema.parse({
+      validatedProduct = {
         assetId: "PROD_01",
         name: graph.brief?.product || "Hero Product",
         productPrompt: `High definition hero product commercial presentation of ${graph.brief?.product || "D2C Product"} with authentic packaging details.`,
         category: "Hero Product",
-      });
+        metadata: {}
+      };
     }
 
     graph.assetRegistry = {
@@ -745,8 +802,10 @@ export class DAGStore {
     graph.characters = validatedCharacters;
     graph.environments = validatedEnvironments;
 
-    // Advance stage to COMPILE_SHOTS
-    graph.currentStage = "COMPILE_SHOTS";
+    // Advance stage to COMPILE_SHOTS if currently at LOCK_ASSETS
+    if (graph.currentStage === "LOCK_ASSETS") {
+      graph.currentStage = "COMPILE_SHOTS";
+    }
     this.save(graph);
     return graph;
   }
@@ -755,8 +814,8 @@ export class DAGStore {
    * Task 2.4: Compiles technical shots with referential integrity checks and server-side prompt synthesis.
    * Can only be called when stage is COMPILE_SHOTS (after LOCK_ASSETS).
    */
-  public compileShots(shotsInput: SceneShot[]): StoryGraph {
-    const graph = this.load();
+  public compileShots(shotsInput: SceneShot[], sessionId?: string): StoryGraph {
+    const graph = this.load(sessionId);
 
     // 1. FSM Stage Lock: Must be in COMPILE_SHOTS
     if (graph.currentStage !== "COMPILE_SHOTS") {
@@ -862,10 +921,13 @@ export class DAGStore {
   /**
    * Resets the entire graph to fresh state.
    */
-  public reset(): StoryGraph {
+  public reset(sessionId?: string): StoryGraph {
+    const targetSessionId = (sessionId || this.sessionId || `session-${Date.now().toString(36)}`).trim();
+    this.sessionId = targetSessionId;
+    this.filePath = path.resolve(this.sessionsDir, `${targetSessionId}.json`);
     const fresh: StoryGraph = {
       version: "1.0.0",
-      projectId: `proj-${Date.now()}`,
+      projectId: targetSessionId,
       brand: "default",
       currentStage: "CORE_THEME",
       brief: null,

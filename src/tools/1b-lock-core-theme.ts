@@ -30,6 +30,7 @@ export async function executeLockCoreTheme(
   ]);
 
   const updatedGraph = store.lockCoreTheme({
+    sessionId: validated.session_id,
     chosenThemeId: validated.chosen_theme_id,
     themeTitle: validated.theme_title,
     themePremise: validated.theme_premise,

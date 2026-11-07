@@ -152,6 +152,8 @@ export class SessionDagService {
   }
 
   public createSession(params: {
+    sessionId?: string;
+    session_id?: string;
     company: string;
     product: string;
     goal: string;
@@ -171,7 +173,7 @@ export class SessionDagService {
 
     const slug = this.sanitizeSlug(params.company);
     const shortId = Math.random().toString(36).substring(2, 6);
-    const sessionId = `${slug}-${shortId}`;
+    const sessionId = (params.sessionId || params.session_id || `${slug}-${shortId}`).trim();
     const now = new Date().toISOString();
 
     const session: SessionState = {
@@ -197,68 +199,62 @@ export class SessionDagService {
   }
 
   public saveSession(session: SessionState): void {
+    if (!session.sessionId || !session.sessionId.trim()) {
+      throw new Error('session_id is required to save session.');
+    }
     this.ensureDirectories();
     session.updatedAt = new Date().toISOString();
     session.scenes = session.lockedNodes;
     const validated = SessionStateSchema.parse(session);
 
-    // Save isolated session JSON (raw UTF-8, zero HTML escaping)
+    // Save isolated session JSON strictly to .nogyaan/sessions/${session_id}.json
     const sessionFilePath = path.join(this.getSessionsDir(), `${validated.sessionId}.json`);
     fs.writeFileSync(sessionFilePath, JSON.stringify(validated, null, 2), 'utf-8');
 
     // Update latest active pointer
-    const latestActive: LatestActive = {
-      latestSessionId: validated.sessionId,
-      updatedAt: validated.updatedAt
-    };
-    fs.writeFileSync(this.getLatestActivePath(), JSON.stringify(latestActive, null, 2), 'utf-8');
-
-    // Mirror to story_graph.json for studio UI and backward compatibility
-    fs.writeFileSync(this.getStoryGraphPath(), JSON.stringify(validated, null, 2), 'utf-8');
+    try {
+      const latestActive: LatestActive = {
+        latestSessionId: validated.sessionId,
+        updatedAt: validated.updatedAt
+      };
+      fs.writeFileSync(this.getLatestActivePath(), JSON.stringify(latestActive, null, 2), 'utf-8');
+    } catch {}
   }
 
-  public loadSession(sessionId?: string): SessionState | null {
+  public loadSession(sessionId?: string): SessionState {
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new Error('session_id is required. No session_id was provided.');
+    }
     this.ensureDirectories();
 
-    let targetSessionId = sessionId;
-    if (!targetSessionId) {
-      const latestPath = this.getLatestActivePath();
-      if (fs.existsSync(latestPath)) {
-        try {
-          const raw = fs.readFileSync(latestPath, 'utf-8');
-          const parsed = JSON.parse(raw);
-          targetSessionId = parsed.latestSessionId;
-        } catch {}
-      }
+    const cleanId = sessionId.trim();
+    const sessionPath = path.join(this.getSessionsDir(), `${cleanId}.json`);
+    if (!fs.existsSync(sessionPath)) {
+      throw new Error(`Session not found: "${cleanId}". Expected file at ${sessionPath}. Run init_brief first.`);
     }
 
-    if (targetSessionId) {
-      const sessionPath = path.join(this.getSessionsDir(), `${targetSessionId}.json`);
-      if (fs.existsSync(sessionPath)) {
-        try {
-          const raw = fs.readFileSync(sessionPath, 'utf-8');
-          const parsed = JSON.parse(raw);
-          return SessionStateSchema.parse(parsed);
-        } catch (err: any) {
-          console.error(`[SessionDagService] Error parsing session ${sessionPath}:`, err.message);
-        }
-      }
+    try {
+      const raw = fs.readFileSync(sessionPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return SessionStateSchema.parse(parsed);
+    } catch (err: any) {
+      console.error(`[SessionDagService] Error parsing session ${sessionPath}:`, err.message);
+      throw err;
     }
-
-    // Fallback: check story_graph.json
-    const storyGraphPath = this.getStoryGraphPath();
-    if (fs.existsSync(storyGraphPath)) {
-      try {
-        const raw = fs.readFileSync(storyGraphPath, 'utf-8');
-        return SessionStateSchema.parse(JSON.parse(raw));
-      } catch {}
-    }
-
-    return null;
   }
 
   public getLatestSession(): SessionState | null {
-    return this.loadSession();
+    const latestPath = this.getLatestActivePath();
+    if (fs.existsSync(latestPath)) {
+      try {
+        const raw = fs.readFileSync(latestPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed.latestSessionId) {
+          return this.loadSession(parsed.latestSessionId);
+        }
+      } catch {}
+    }
+    return null;
   }
 
   /**
@@ -267,16 +263,16 @@ export class SessionDagService {
    * Transitions CORE_THEME -> SCENE_1_SETUP.
    */
   public lockCoreTheme(params: {
-    sessionId?: string;
+    sessionId: string;
     chosenThemeId: '1' | '2' | '3';
     themeTitle: string;
     themePremise: string;
     nextOptions?: NarrativeOption[];
   }): { session: SessionState; directive: Record<string, any> } {
-    const session = this.loadSession(params.sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${params.sessionId || 'latest'}. Run init_brief first.`);
+    if (!params.sessionId || !params.sessionId.trim()) {
+      throw new Error('session_id is required for lock_core_theme.');
     }
+    const session = this.loadSession(params.sessionId);
 
     this.validateNoCameraJargon([
       params.themeTitle,
@@ -320,7 +316,7 @@ export class SessionDagService {
    * Hides raw exit_frame_anchor from user-facing UI, storing it as _internal_exit_anchor.
    */
   public branchScene(params: {
-    sessionId?: string;
+    sessionId: string;
     action: 'commit' | 'regenerate';
     sceneNumber?: number;
     chosenOptionId?: '1' | '2' | '3';
@@ -333,10 +329,10 @@ export class SessionDagService {
     pruningConfirmation?: string[];
     presetLanguageRule?: string;
   }): { session: SessionState; continuityBridge?: string; directive: Record<string, any> } {
-    const session = this.loadSession(params.sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${params.sessionId || 'latest'}. Run init_brief first.`);
+    if (!params.sessionId || !params.sessionId.trim()) {
+      throw new Error('session_id is required for branch_scene.');
     }
+    const session = this.loadSession(params.sessionId);
 
     // Anti-jargon check on all incoming narrative content
     this.validateNoCameraJargon([
@@ -432,9 +428,8 @@ export class SessionDagService {
     const actTitles = ['Act I — Setup', 'Act II — Catalyst', 'Act III — Twist', 'Act IV — Climax'];
     const actTitle = sceneNum <= 4 ? actTitles[sceneNum - 1] : `Act ${sceneNum}`;
 
-    const exitAnchor =
-      params.exitFrameAnchor ||
-      `End of Scene ${sceneNum}: Character holds quiet reaction frame as moment settles.`;
+    // Exit frame anchor: optional. If undefined, leave blank; do not inject generic filler frame.
+    const exitAnchor = params.exitFrameAnchor ? params.exitFrameAnchor.trim() : '';
 
     const node: StoryNode = {
       stage: currentStage,
@@ -460,10 +455,12 @@ export class SessionDagService {
 
     let continuityBridge: string | undefined;
     if (nextStage !== 'LOCK_ASSETS') {
+      const bridgeClause = exitAnchor
+        ? `[🔗 MANDATORY CONTINUITY BRIDGE]: Scene ${sceneNum} ended at this exact physical frame: "${exitAnchor}".\nEvery single one of your 3 options for Scene ${sceneNum + 1} MUST physically and visually connect to this exact state.\n`
+        : '';
       continuityBridge =
         `[🎬 nogyaan | Cartridge: ${session.presetId} | Session: ${session.sessionId} | Pruned: 2 rejected branches wiped]\n` +
-        `[🔗 MANDATORY CONTINUITY BRIDGE]: Scene ${sceneNum} ended at this exact physical frame: "${exitAnchor}".\n` +
-        `Every single one of your 3 options for Scene ${sceneNum + 1} MUST physically and visually connect to this exact state.\n` +
+        bridgeClause +
         `[🗣️ LANGUAGE RULE]: ${languageRule}`;
     }
 
@@ -484,91 +481,134 @@ export class SessionDagService {
   }
 
   public lockAssets(params: {
-    sessionId?: string;
-    characters: any[];
-    environments: any[];
+    sessionId: string;
+    characters: any[] | Record<string, any>;
+    environments: any[] | Record<string, any>;
     product?: any;
     presetLanguageRule?: string;
   }): { session: SessionState; directive: Record<string, any> } {
-    const session = this.loadSession(params.sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${params.sessionId || 'latest'}. Run init_brief first.`);
+    if (!params.sessionId || !params.sessionId.trim()) {
+      throw new Error('session_id is required for lock_assets.');
     }
+    const session = this.loadSession(params.sessionId);
 
-    if (session.stage !== 'LOCK_ASSETS') {
+    // Upsert support: Allow execution during LOCK_ASSETS, COMPILE_SHOTS, or COMPLETED
+    const allowedStages = ['LOCK_ASSETS', 'COMPILE_SHOTS', 'COMPLETED'];
+    if (!allowedStages.includes(session.stage)) {
       throw new Error(
-        `FSM STAGE VIOLATION: lock_assets can only be called during stage LOCK_ASSETS (current stage: ${session.stage}).`
+        `FSM STAGE VIOLATION: lock_assets can only be called after all 4 scenes have been locked into the DAG. Current stage: ${session.stage}`
       );
     }
 
-    if (!params.characters || !Array.isArray(params.characters) || params.characters.length === 0) {
+    // Normalize characters (allow array or record, arbitrary keys and descriptions)
+    let charList: any[] = [];
+    if (Array.isArray(params.characters)) {
+      charList = params.characters;
+    } else if (params.characters && typeof params.characters === 'object') {
+      charList = Object.entries(params.characters).map(([k, v]) => {
+        if (typeof v === 'string') return { id: k, name: k, appearancePrompt: v };
+        return { id: k, ...(v as any) };
+      });
+    }
+
+    // Existing characters map for upserting
+    const anyAssets = session.assets as any;
+    const existingChars: Record<string, any> = {};
+    if (anyAssets && Array.isArray(anyAssets.characters)) {
+      for (const ec of anyAssets.characters) {
+        existingChars[ec.id.toUpperCase()] = ec;
+      }
+    }
+
+    const validatedChars = (charList.length > 0 ? charList : (anyAssets?.characters || [])).map((c: any, idx: number) => {
+      const rawId = c.id || c.assetId || `CHAR_0${idx + 1}`;
+      const assetId = String(rawId).toUpperCase();
+      const existing = existingChars[assetId];
+      const name = c.name || existing?.name || `Character ${idx + 1}`;
+      const role = c.role || existing?.role || 'Lead';
+      const prompt = c.appearancePrompt || c.prompt || c.description || (typeof c === 'string' ? c : '') || existing?.appearancePrompt || '';
+      return {
+        id: assetId,
+        name,
+        role,
+        appearancePrompt: prompt,
+        referencePrompt: this.promptCompiler.generateCharacterImagePrompt({
+          id: assetId,
+          name,
+          role,
+          appearancePrompt: prompt
+        })
+      };
+    });
+
+    if (validatedChars.length === 0) {
       throw new Error('At least one character asset is required');
     }
 
-    const validatedChars = params.characters.map((c, idx) => {
-      const assetId = c.id || c.assetId;
-      if (!assetId || !/^CHAR_\d+$/i.test(assetId)) {
-        throw new Error(
-          `Character ID "${assetId || ''}" violates naming convention. Must match CHAR_01..N (e.g. 'CHAR_01').`
-        );
+    // Normalize environments (allow array or record, arbitrary keys and descriptions)
+    let envList: any[] = [];
+    if (Array.isArray(params.environments)) {
+      envList = params.environments;
+    } else if (params.environments && typeof params.environments === 'object') {
+      envList = Object.entries(params.environments).map(([k, v]) => {
+        if (typeof v === 'string') return { id: k, name: k, environmentPrompt: v };
+        return { id: k, ...(v as any) };
+      });
+    }
+
+    const existingEnvs: Record<string, any> = {};
+    if (anyAssets && Array.isArray(anyAssets.environments)) {
+      for (const eb of anyAssets.environments) {
+        existingEnvs[eb.id.toUpperCase()] = eb;
       }
+    }
+
+    const validatedEnvs = (envList.length > 0 ? envList : (anyAssets?.environments || [])).map((b: any, idx: number) => {
+      const rawId = b.id || b.assetId || `BG_0${idx + 1}`;
+      const assetId = String(rawId).toUpperCase();
+      const existing = existingEnvs[assetId];
+      const name = b.name || existing?.name || `Environment ${idx + 1}`;
+      const prompt = b.environmentPrompt || b.prompt || b.description || (typeof b === 'string' ? b : '') || existing?.environmentPrompt || '';
+      const lighting = b.lightingProfile || b.lighting || existing?.lightingProfile || 'Cinematic atmospheric lighting';
       return {
-        id: assetId.toUpperCase(),
-        name: c.name || `Character ${idx + 1}`,
-        role: c.role || 'Lead',
-        appearancePrompt: c.appearancePrompt || c.prompt || '',
-        referencePrompt: this.promptCompiler.generateCharacterImagePrompt({
-          id: assetId.toUpperCase(),
-          name: c.name || `Character ${idx + 1}`,
-          role: c.role || 'Lead',
-          appearancePrompt: c.appearancePrompt || c.prompt || ''
+        id: assetId,
+        name,
+        environmentPrompt: prompt,
+        lightingProfile: lighting,
+        referencePrompt: this.promptCompiler.generateLocationImagePrompt({
+          id: assetId,
+          name,
+          environmentPrompt: prompt,
+          lightingProfile: lighting
         })
       };
     });
 
-    if (!params.environments || !Array.isArray(params.environments) || params.environments.length === 0) {
+    if (validatedEnvs.length === 0) {
       throw new Error('At least one environment asset is required');
     }
 
-    const validatedEnvs = params.environments.map((b, idx) => {
-      const assetId = b.id || b.assetId;
-      if (!assetId || !/^BG_\d+$/i.test(assetId)) {
-        throw new Error(
-          `Background ID "${assetId || ''}" violates naming convention. Must match BG_01..N (e.g. 'BG_01').`
-        );
-      }
-      return {
-        id: assetId.toUpperCase(),
-        name: b.name || `Environment ${idx + 1}`,
-        environmentPrompt: b.environmentPrompt || b.prompt || '',
-        lightingProfile: b.lightingProfile || 'Cinematic atmospheric lighting',
-        referencePrompt: this.promptCompiler.generateLocationImagePrompt({
-          id: assetId.toUpperCase(),
-          name: b.name || `Environment ${idx + 1}`,
-          environmentPrompt: b.environmentPrompt || b.prompt || '',
-          lightingProfile: b.lightingProfile || 'Cinematic atmospheric lighting'
-        })
-      };
-    });
-
-    const rawProd = params.product || { assetId: 'PROD_01', name: session.product, productPrompt: 'Hero product' };
-    const prodId = rawProd.id || rawProd.assetId;
-    if (prodId !== 'PROD_01') {
-      throw new Error(
-        `Product ID "${prodId}" violates naming convention. Must strictly be 'PROD_01'.`
-      );
-    }
+    // Product handling (allow string or object, arbitrary descriptions)
+    const rawProd = params.product !== undefined
+      ? params.product
+      : session.assets?.product || { assetId: 'PROD_01', name: session.product, productPrompt: 'Hero product' };
+    const prodId = (typeof rawProd === 'object' && rawProd !== null ? (rawProd.id || rawProd.assetId) : 'PROD_01') || 'PROD_01';
+    const prodName = (typeof rawProd === 'object' && rawProd !== null ? rawProd.name : '') || session.product || 'Hero Product';
+    const prodAppearance = typeof rawProd === 'string'
+      ? rawProd
+      : rawProd.packagingAppearance || rawProd.productPrompt || rawProd.appearance || rawProd.description || 'Hero product packaging';
+    const prodAngle = (typeof rawProd === 'object' && rawProd !== null ? rawProd.heroAngle : '') || 'Front 45-degree hero angle';
 
     const validatedProd = {
       id: 'PROD_01' as const,
-      name: rawProd.name || session.product,
-      packagingAppearance: rawProd.packagingAppearance || rawProd.productPrompt || rawProd.appearance || 'Hero product packaging',
-      heroAngle: rawProd.heroAngle || 'Front 45-degree hero angle',
+      name: prodName,
+      packagingAppearance: prodAppearance,
+      heroAngle: prodAngle,
       referencePrompt: this.promptCompiler.generateProductImagePrompt({
         id: 'PROD_01',
-        name: rawProd.name || session.product,
-        packagingAppearance: rawProd.packagingAppearance || rawProd.productPrompt || rawProd.appearance || 'Hero product packaging',
-        heroAngle: rawProd.heroAngle || 'Front 45-degree hero angle'
+        name: prodName,
+        packagingAppearance: prodAppearance,
+        heroAngle: prodAngle
       })
     };
 
@@ -579,7 +619,9 @@ export class SessionDagService {
     };
 
     session.assets = registry;
-    session.stage = 'COMPILE_SHOTS';
+    if (session.stage === 'LOCK_ASSETS') {
+      session.stage = 'COMPILE_SHOTS';
+    }
     this.saveSession(session);
 
     return {
@@ -599,7 +641,7 @@ export class SessionDagService {
    * compiles dual prompt strings, and appends sequentially.
    */
   public compileSingleScene(params: {
-    sessionId?: string;
+    sessionId: string;
     sceneNumber: number;
     durationSeconds?: number;
     actTitle?: string;
@@ -623,10 +665,10 @@ export class SessionDagService {
     editorCutNote?: string;
     attachedAssetRefs: string[];
   }): { session: SessionState; compiledShot: CompiledShot; directive: Record<string, any> } {
-    const session = this.loadSession(params.sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${params.sessionId || 'latest'}. Run init_brief first.`);
+    if (!params.sessionId || !params.sessionId.trim()) {
+      throw new Error('session_id is required for compile_single_scene.');
     }
+    const session = this.loadSession(params.sessionId);
 
     if (session.stage !== 'COMPILE_SHOTS' && session.stage !== 'COMPLETED') {
       throw new Error(
@@ -671,7 +713,7 @@ export class SessionDagService {
       attachedAssetRefs: params.attachedAssetRefs
     };
 
-    const compiled = this.promptCompiler.compileSingleScene(input, session.assets);
+    const compiled = this.promptCompiler.compileSingleScene(input, session.assets as any);
 
     if (!session.compiledShots) {
       session.compiledShots = [];
@@ -718,15 +760,15 @@ export class SessionDagService {
    * Legacy batch compiler adapter for backwards compatibility
    */
   public compileShots(params: {
-    sessionId?: string;
+    sessionId: string;
     shots: any[];
     openStudioUi?: boolean;
     presetLanguageRule?: string;
   }): { session: SessionState; compiledShots: CompiledShot[]; directive: Record<string, any> } {
-    const session = this.loadSession(params.sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${params.sessionId || 'latest'}. Run init_brief first.`);
+    if (!params.sessionId || !params.sessionId.trim()) {
+      throw new Error('session_id is required for compile_shots.');
     }
+    const session = this.loadSession(params.sessionId);
 
     if (session.stage !== 'COMPILE_SHOTS' && session.stage !== 'COMPLETED') {
       throw new Error(
@@ -789,7 +831,7 @@ export class SessionDagService {
         attachedAssetRefs: assetRefs
       };
 
-      const compiled = this.promptCompiler.compileSingleScene(input, session.assets);
+      const compiled = this.promptCompiler.compileSingleScene(input, session.assets as any);
       compiledList.push(compiled);
     }
 

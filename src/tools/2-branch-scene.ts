@@ -88,6 +88,7 @@ export async function executeBranchScene(
   }
 
   const updatedGraph = store.branchScene({
+    sessionId: validated.session_id,
     action: validated.action,
     selectedOptionId: selectedOption,
     nextOptions: validated.nextOptions,

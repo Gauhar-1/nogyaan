@@ -5,6 +5,7 @@ import { StateManager } from './state-manager.js';
 export interface PitchScriptInput {
   scene_id: string; // e.g. "SCENE_01"
   user_guidance?: string;
+  options?: ScriptPitch[] | any[];
   state?: NogyaanState;
 }
 
@@ -24,6 +25,16 @@ export class WritersRoomService {
     const sm = input.state ? new StateManager() : this.stateManager;
     if (input.state) {
       sm.setState(input.state);
+    }
+
+    // Direct dynamic pass-through if pre-generated options provided
+    if (input.options && Array.isArray(input.options) && input.options.length >= 3) {
+      return input.options.slice(0, 3).map((opt, idx) => {
+        const id = opt.id || String.fromCharCode(65 + idx);
+        const style = opt.style || opt.writer_persona || (idx === 0 ? 'Heartfelt' : idx === 1 ? 'Viral' : 'Offbeat');
+        const txt = opt.txt || opt.narrative_block || opt.description || opt.summary || String(opt);
+        return ScriptPitchSchema.parse({ id, style, txt });
+      });
     }
 
     // Just-In-Time Context Slice: ONLY Core Premise & Scene N-1
@@ -57,27 +68,27 @@ export class WritersRoomService {
       ? `Picking up from: "${slice.previous_scene_narrative.slice(0, 80)}..."`
       : 'Opening scene establishing character and daily friction.';
 
-    const sceneNum = parseInt(scene_id.replace(/\D/g, ''), 10) || 1;
+    const premiseTheme = slice.core_premise || 'Authentic human storytelling';
 
-    // 1. Heartfelt Nostalgist
+    // 1. Heartfelt Nostalgist (grounded, intimate, emotional connection around core premise)
     const optA: ScriptPitch = {
       id: 'A',
       style: 'Heartfelt',
-      txt: `${prevContext} A quiet, tender moment unfolds as soft morning light spills across the worn wooden table. Hands pause over a family keepsake while an unspoken warmth bridges the generational distance. A shared glance acknowledges what words could never quite capture.${guidance}`
+      txt: `${prevContext} An intimate, grounded human beat highlighting ${premiseTheme}. Characters navigate real emotional stakes with understated honesty, letting subtle body language and shared recognition carry the moment.${guidance}`.trim()
     };
 
-    // 2. Viral Disruptor
+    // 2. Viral Disruptor (punchy, high-energy, relatable friction)
     const optB: ScriptPitch = {
       id: 'B',
       style: 'Viral',
-      txt: `${prevContext} Instant chaotic smash: our lead stares dead into the lens with an exasperated, deeply relatable expression. Everyday routine completely spirals in two seconds flat before an unexpectedly slick, high-energy discovery flips the dynamic upside down.${guidance}`
+      txt: `${prevContext} High-impact relatable friction tackling ${premiseTheme}. Rapid-fire visual escalation turns everyday frustration into a dynamic, modern turning point with punchy visual pacing.${guidance}`.trim()
     };
 
-    // 3. Offbeat Eccentric
+    // 3. Offbeat Eccentric (deadpan, eccentric, stylized precision)
     const optC: ScriptPitch = {
       id: 'C',
       style: 'Offbeat',
-      txt: `${prevContext} Deadpan silence. An absurdly meticulous micro-action takes center stage—someone deliberately aligning two spoons at a perfect 45-degree angle. An inanimate object is regarded with deep philosophical reverence before the scene abruptly pivots.${guidance}`
+      txt: `${prevContext} Stylized deadpan observation framing ${premiseTheme}. Meticulous physical choreography and dry visual comedy give everyday objects and routine actions unexpected narrative weight.${guidance}`.trim()
     };
 
     return [optA, optB, optC];

@@ -15,18 +15,111 @@ import {
   ShotNode
 } from './types.js';
 
+/**
+ * Strict parser for last_shot_egress.
+ * Saves ONLY the physical visual description of the final frame.
+ * Explicitly strips out system meta-notes, bracketed notes, and instructions like "Rewrite fully".
+ */
+export function parseStrictEgress(rawEgressOrPayload: string): string {
+  if (!rawEgressOrPayload || typeof rawEgressOrPayload !== 'string') return '';
+
+  let text = rawEgressOrPayload.trim();
+
+  // 1. Strip system/meta bracketed directives: [SYSTEM: ...], [User Note: ...], [Direction: ...]
+  text = text.replace(/\[(?:SYSTEM|User Note|Direction|Note|Directorial note|Negative Prompt)[^\]]*\]/gi, '');
+  text = text.replace(/\((?:Rewrite fully|Directorial note|Refinement|SYSTEM|Note)[^\)]*\)/gi, '');
+
+  // 2. Strip explicit meta-instructions and phrases
+  text = text.replace(/\b(?:Rewrite fully|Rewrite\s+completely|Please rewrite|Make sure to|Ensure that|Do not move camera|Ask the user|Keep your response|Output raw json)[^.]*(?:\.|$)/gi, '');
+  text = text.replace(/^(?:Note|Directorial Note|System Directive|Negative Prompt|User Feedback):\s*/i, '');
+
+  // 3. Match explicit terminating phrase if present: "Shot ends with...", "Ends with...", "Egress:..."
+  const match = text.match(/(?:Shot ends with|Ends with|Egress:?|Final frame:?)\s*([^.]+(?:\.[^.]+)?)/i);
+  let egressCandidate = match && match[1] ? match[1].trim() : '';
+
+  // 4. Strip trailing system guidance or artifacts from candidate
+  if (egressCandidate) {
+    egressCandidate = egressCandidate
+      .replace(/\s*,\s*seamless image-loop continuity.*$/i, '')
+      .replace(/\s*,\s*image-loop continuity.*$/i, '')
+      .replace(/\s*,\s*allowing manual.*$/i, '')
+      .replace(/\s*to ensure.*$/i, '')
+      .replace(/\[.*?\]/g, '')
+      .replace(/[.]+$/, '')
+      .trim();
+  }
+
+  // If candidate is empty, fallback to sentence with physical resting posture
+  if (!egressCandidate) {
+    const sentences = text.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+    const postureSentence = sentences.reverse().find((s) =>
+      /\b(?:rests|stands|seated|holds|freezes|pauses|looking|steady|gaze|frame settles|locked on|profile)\b/i.test(s)
+    );
+    if (postureSentence) {
+      egressCandidate = postureSentence
+        .replace(/^(?:Shot ends with|Ends with|Egress:?)\s*/i, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/[.]+$/, '')
+        .trim();
+    }
+  }
+
+  // Final scrub of any stray meta tokens
+  egressCandidate = egressCandidate
+    .replace(/\b(?:rewrite fully|directorial note|seamless loop)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  return egressCandidate;
+}
+
 export class StateManager {
   private filePath: string;
+  private sessionId?: string;
   private state: NogyaanState;
   private listeners: Set<(state: NogyaanState) => void> = new Set();
 
-  constructor(customFilePath?: string) {
-    this.filePath = customFilePath || this.resolveStateFilePath();
+  constructor(customFilePath?: string, sessionId?: string) {
+    this.sessionId = sessionId;
+    this.filePath = customFilePath || (sessionId ? this.resolveSessionFilePath(sessionId) : this.resolveStateFilePath());
     this.state = this.loadFromFile();
+  }
+
+  public static forSession(sessionId: string, baseDir?: string): StateManager {
+    if (!sessionId || !sessionId.trim()) {
+      throw new Error('session_id is required. No session_id was provided.');
+    }
+    const cleanId = sessionId.trim();
+    const ws = baseDir || (process.env.NOGYAAN_WORKSPACE ? path.resolve(process.env.NOGYAAN_WORKSPACE.trim()) : process.cwd());
+    const storageDir = path.resolve(ws, '.nogyaan');
+    const sessionsDir = path.resolve(storageDir, 'sessions');
+    if (!fs.existsSync(sessionsDir)) {
+      try {
+        fs.mkdirSync(sessionsDir, { recursive: true });
+      } catch {}
+    }
+    const sessionFile = path.resolve(sessionsDir, `${cleanId}.json`);
+    return new StateManager(sessionFile, cleanId);
   }
 
   public getFilePath(): string {
     return this.filePath;
+  }
+
+  public getSessionId(): string | undefined {
+    return this.sessionId;
+  }
+
+  private resolveSessionFilePath(sessionId: string): string {
+    const ws = process.env.NOGYAAN_WORKSPACE ? path.resolve(process.env.NOGYAAN_WORKSPACE.trim()) : process.cwd();
+    const storageDir = path.resolve(ws, '.nogyaan');
+    const sessionsDir = path.resolve(storageDir, 'sessions');
+    if (!fs.existsSync(sessionsDir)) {
+      try {
+        fs.mkdirSync(sessionsDir, { recursive: true });
+      } catch {}
+    }
+    return path.resolve(sessionsDir, `${sessionId.trim()}.json`);
   }
 
   private resolveStateFilePath(): string {
@@ -81,8 +174,9 @@ export class StateManager {
   }
 
   public getDefaultState(): NogyaanState {
+    const id = this.sessionId || (this.filePath ? path.basename(this.filePath, '.json') : `session-${Date.now().toString(36)}`);
     return {
-      project_id: 'proj-default',
+      project_id: id,
       core_premise: 'Authentic high-conversion commercial',
       global_director_notes: '',
       global_medium: 'Live-Action Cinematic',
@@ -100,7 +194,70 @@ export class StateManager {
       try {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(raw);
-        return NogyaanStateSchema.parse(parsed);
+
+        // Normalize if loaded from a SessionState JSON file
+        const projectId = parsed.project_id || parsed.sessionId || this.sessionId || (this.filePath ? path.basename(this.filePath, '.json') : 'default-session');
+        const corePremise = parsed.core_premise || parsed.coreTheme?.themePremise || parsed.goal || 'Authentic high-conversion commercial';
+        const globalMedium = parsed.global_medium || 'Live-Action Cinematic';
+        const globalDirectorNotes = parsed.global_director_notes || '';
+
+        // Normalize assets
+        let assets = parsed.assets || parsed.asset_bible || { characters: {}, backgrounds: {}, product: '' };
+        if (Array.isArray(assets?.characters) || Array.isArray(assets?.environments)) {
+          const charMap: Record<string, string> = {};
+          if (Array.isArray(assets.characters)) {
+            for (const c of assets.characters) {
+              charMap[c.id || c.assetId] = c.appearancePrompt || c.name || '';
+            }
+          }
+          const bgMap: Record<string, string> = {};
+          if (Array.isArray(assets.environments)) {
+            for (const b of assets.environments) {
+              bgMap[b.id || b.assetId] = b.environmentPrompt || b.name || '';
+            }
+          }
+          const prodStr = typeof assets.product === 'string'
+            ? assets.product
+            : assets.product?.packagingAppearance || assets.product?.name || '';
+          assets = {
+            characters: charMap,
+            backgrounds: bgMap,
+            product: prodStr
+          };
+        }
+
+        // Normalize scenes
+        const rawScenes = parsed.scenes || parsed.lockedNodes || [];
+        const normalizedScenes: Scene[] = rawScenes.map((sc: any, idx: number) => {
+          const sceneId = sc.scene_id || (sc.stage ? `SCENE_0${sc.sceneNumber || idx + 1}` : `SCENE_0${idx + 1}`);
+          let lockedScript = sc.locked_script;
+          if (!lockedScript && sc.chosenNarrativeSummary) {
+            lockedScript = {
+              id: sc.chosenOptionId || '1',
+              style: 'Heartfelt',
+              txt: sc.chosenNarrativeSummary
+            };
+          }
+          return {
+            scene_id: sceneId,
+            locked_script: lockedScript || null,
+            active_refs: sc.active_refs || [],
+            spatial_memory: sc.spatial_memory || [],
+            last_shot_egress: sc.last_shot_egress || '',
+            shots: sc.shots || {}
+          };
+        });
+
+        const stateObj: NogyaanState = {
+          project_id: projectId,
+          core_premise: corePremise,
+          global_director_notes: globalDirectorNotes,
+          global_medium: globalMedium,
+          assets,
+          scenes: normalizedScenes
+        };
+
+        return NogyaanStateSchema.parse(stateObj);
       } catch (err: any) {
         console.warn(
           `[StateManager] Failed to parse existing state file at ${this.filePath} (${err.message}). Initializing default state.`
@@ -122,7 +279,39 @@ export class StateManager {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    fs.writeFileSync(this.filePath, JSON.stringify(validated, null, 2), 'utf-8');
+    let existingData: Record<string, any> = {};
+    if (fs.existsSync(this.filePath)) {
+      try {
+        existingData = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
+      } catch {}
+    }
+
+    const hasV1Assets = Array.isArray(existingData.assets?.characters) || Array.isArray(existingData.assets?.environments);
+    const isSessionState = Boolean(existingData.stage || existingData.company || existingData.sessionId);
+
+    const mergedAssets = hasV1Assets
+      ? existingData.assets
+      : isSessionState && !existingData.assets
+      ? undefined
+      : validated.assets;
+
+    const merged: Record<string, any> = {
+      ...existingData,
+      project_id: validated.project_id,
+      core_premise: validated.core_premise,
+      global_director_notes: validated.global_director_notes,
+      global_medium: validated.global_medium,
+      assets: mergedAssets,
+      asset_bible: validated.assets,
+      scenes: validated.scenes,
+      sessionId: existingData.sessionId || validated.project_id,
+      updatedAt: new Date().toISOString()
+    };
+    if (mergedAssets === undefined) {
+      delete merged.assets;
+    }
+
+    fs.writeFileSync(this.filePath, JSON.stringify(merged, null, 2), 'utf-8');
     this.notifyListeners();
   }
 
@@ -204,8 +393,27 @@ export class StateManager {
     return this.getState();
   }
 
-  public updateAssetBible(assets: AssetBible): NogyaanState {
-    this.state.assets = assets;
+  public updateAssetBible(assets: Partial<AssetBible> | Record<string, any>): NogyaanState {
+    if (!this.state.assets) {
+      this.state.assets = { characters: {}, backgrounds: {}, product: '' };
+    }
+    if (assets.characters && typeof assets.characters === 'object') {
+      this.state.assets.characters = {
+        ...this.state.assets.characters,
+        ...assets.characters
+      };
+    }
+    if (assets.backgrounds && typeof assets.backgrounds === 'object') {
+      this.state.assets.backgrounds = {
+        ...this.state.assets.backgrounds,
+        ...assets.backgrounds
+      };
+    }
+    if (assets.product !== undefined) {
+      this.state.assets.product = typeof assets.product === 'string'
+        ? assets.product
+        : (assets.product as any)?.packagingAppearance || (assets.product as any)?.productPrompt || (assets.product as any)?.name || String(assets.product);
+    }
     this.saveToFile();
     return this.getState();
   }
@@ -326,19 +534,7 @@ export class StateManager {
    * Extracts the terminating temporal egress state from a SOTA prompt payload.
    */
   public extractEgressFromPayload(payload: string): string {
-    if (!payload) return '';
-    const match = payload.match(/(?:Shot ends with|Ends with|Egress:?)\s+([^.]+(?:\.[^.]+)?)/i);
-    if (match && match[1]) {
-      return match[1].replace(/[.]+$/, '').trim();
-    }
-    const sentences = payload.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
-    if (sentences.length > 0) {
-      const last = sentences[sentences.length - 1];
-      if (/rests|stands|seated|closed|freeze|holds|pauses|ends/i.test(last)) {
-        return last.replace(/[.]+$/, '').trim();
-      }
-    }
-    return '';
+    return parseStrictEgress(payload);
   }
 
   public appendSpatialMemory(scene_id: string, facts: string[]): NogyaanState {

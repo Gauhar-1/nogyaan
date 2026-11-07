@@ -341,11 +341,33 @@ try {
   assert(registeredToolNames.includes('pitch_shot_options'), 'pitch_shot_options must be registered');
   assert(registeredToolNames.includes('lock_shot_option'), 'lock_shot_option must be registered');
 
+  // Verify every MCP tool strictly enforces session_id in required schema
+  for (const tool of toolsListResult.tools) {
+    assert(
+      tool.inputSchema.required && tool.inputSchema.required.includes('session_id'),
+      `Tool "${tool.name}" must require session_id in its inputSchema.required list`
+    );
+  }
+  console.log('  ✅ Enforced session_id in Tools: All registered MCP tools require session_id in schema.');
+
+  // Verify calling without session_id returns explicit error
+  const missingSessionCall = await callHandler({
+    params: {
+      name: 'pitch_shot_options',
+      arguments: { scene_id: 'SCENE_01', shot_id: 'SHOT_01' }
+    }
+  });
+  assert.equal(missingSessionCall.isError, true, 'Calling tool without session_id must return error');
+  assert(missingSessionCall.content[0].text.includes('session_id is required'));
+  console.log('  ✅ Calling without session_id correctly rejected with explicit error.');
+
+  const testSessionId = stateManager.getState().project_id || 'test-session';
+
   // Verify pitch_shot_options yields to user and completely halts
   const pitchCall = await callHandler({
     params: {
       name: 'pitch_shot_options',
-      arguments: { scene_id: 'SCENE_01', shot_id: 'SHOT_01' }
+      arguments: { session_id: testSessionId, scene_id: 'SCENE_01', shot_id: 'SHOT_01' }
     }
   });
 
@@ -373,7 +395,7 @@ try {
   const conceptsCall = await callHandler({
     params: {
       name: 'pitch_shot_concepts',
-      arguments: { scene_id: 'SCENE_01', shot_id: 'SHOT_01' }
+      arguments: { session_id: testSessionId, scene_id: 'SCENE_01', shot_id: 'SHOT_01' }
     }
   });
 
@@ -401,6 +423,7 @@ try {
     params: {
       name: 'compile_sota_prompt',
       arguments: {
+        session_id: testSessionId,
         scene_id: 'SCENE_01',
         shot_id: 'SHOT_01',
         selected_option: '1'
@@ -435,6 +458,7 @@ try {
     params: {
       name: 'compile_sota_prompt',
       arguments: {
+        session_id: testSessionId,
         scene_id: 'SCENE_01',
         shot_id: 'SHOT_02',
         selected_option: '2'
@@ -465,6 +489,7 @@ try {
     params: {
       name: 'compile_sota_prompt',
       arguments: {
+        session_id: testSessionId,
         scene_id: 'SCENE_04',
         shot_id: 'SHOT_03',
         selected_option: '1'
@@ -498,6 +523,7 @@ try {
     params: {
       name: 'reroll_shot',
       arguments: {
+        session_id: testSessionId,
         scene_id: 'SCENE_01',
         shot_id: 'SHOT_01',
         direction: 'Make Sharma stand upright and hold the brass cup instead of sitting'
@@ -547,6 +573,127 @@ try {
   assert(reactAppContent.includes('downloadTreatmentPdf'), 'NogyaanV2App.tsx must import and use downloadTreatmentPdf');
 
   console.log('  ✅ Native JSON-to-PDF Generator produces multi-page selectable-text PDF with zero DOM-screenshot dependencies.');
+
+  // ==========================================================================
+  // Test 12: Strict Multi-Session Isolation (e.g., runway-l12q vs parallel-session)
+  // ==========================================================================
+  console.log('\n🔹 Test 12: Multi-Session Isolation & Zero proj-default Fallback');
+
+  const testSessionRunway = 'runway-l12q';
+  const testSessionParallel = 'parallel-project-99';
+
+  // 1. Initialize runway-l12q session
+  const initRunwayCall = await callHandler({
+    params: {
+      name: 'init_brief',
+      arguments: {
+        session_id: testSessionRunway,
+        company: 'Runway Alpha',
+        product: 'Motion AI',
+        goal: 'Direct dynamic video scenes'
+      }
+    }
+  });
+  assert(!initRunwayCall.isError, 'init_brief must succeed for runway-l12q');
+  const runwayFilePath = path.join(process.cwd(), '.nogyaan', 'sessions', `${testSessionRunway}.json`);
+  assert(fs.existsSync(runwayFilePath), `File must strictly exist at ${runwayFilePath}`);
+
+  // 2. Lock core theme for runway-l12q
+  const lockThemeRunway = await callHandler({
+    params: {
+      name: 'lock_core_theme',
+      arguments: {
+        session_id: testSessionRunway,
+        chosen_theme_id: '1',
+        theme_title: 'Unreal Speed',
+        theme_premise: 'A filmmaker creates whole worlds in seconds'
+      }
+    }
+  });
+  assert(!lockThemeRunway.isError, 'lock_core_theme must succeed for runway-l12q');
+
+  // 3. Branch scene 1 for runway-l12q
+  const branchRunwayCall = await callHandler({
+    params: {
+      name: 'branch_scene',
+      arguments: {
+        session_id: testSessionRunway,
+        action: 'commit',
+        scene_number: 1,
+        chosen_option_id: '1',
+        chosen_narrative_summary: 'Devon stares at an empty timeline, despair turning into focus as the prompt ignites.'
+      }
+    }
+  });
+  assert(!branchRunwayCall.isError, 'branch_scene must succeed for runway-l12q');
+  const runwayData = JSON.parse(fs.readFileSync(runwayFilePath, 'utf-8'));
+  assert.equal(runwayData.sessionId, testSessionRunway);
+  assert.equal(runwayData.stage, 'SCENE_2_CATALYST');
+  assert.equal(runwayData.lockedNodes.length, 1);
+
+  // 4. Initialize parallel-project-99 session
+  const initParallelCall = await callHandler({
+    params: {
+      name: 'init_brief',
+      arguments: {
+        session_id: testSessionParallel,
+        company: 'Chai Direct',
+        product: 'Spiced Tea',
+        goal: 'Heritage brewing'
+      }
+    }
+  });
+  assert(!initParallelCall.isError, 'init_brief must succeed for parallel session');
+  const parallelFilePath = path.join(process.cwd(), '.nogyaan', 'sessions', `${testSessionParallel}.json`);
+  assert(fs.existsSync(parallelFilePath), `File must strictly exist at ${parallelFilePath}`);
+
+  // 5. Verify parallel session is completely fresh and not polluted by runway-l12q
+  const parallelData = JSON.parse(fs.readFileSync(parallelFilePath, 'utf-8'));
+  assert.equal(parallelData.sessionId, testSessionParallel);
+  assert.equal(parallelData.stage, 'CORE_THEME');
+  assert.equal(parallelData.lockedNodes.length, 0, 'New session must have 0 locked scenes');
+  assert.notEqual(parallelData.company, runwayData.company);
+
+  // Verify lock_assets on fresh parallel session rejects out-of-order execution (proves scenes aren't falsely leaked)
+  const prematureLockAssetsCall = await callHandler({
+    params: {
+      name: 'lock_assets',
+      arguments: {
+        session_id: testSessionParallel,
+        characters: [{ id: 'CHAR_01', name: 'Ravi', role: 'Founder', appearancePrompt: '30s' }],
+        environments: [{ id: 'BG_01', name: 'Kitchen', environmentPrompt: 'Warm kitchen', lightingProfile: 'Morning' }],
+        product: { id: 'PROD_01', name: 'Chai', packagingAppearance: 'Tin', heroAngle: 'Front' }
+      }
+    }
+  });
+  assert.equal(prematureLockAssetsCall.isError, true, 'lock_assets on fresh session must reject out-of-order execution');
+  assert(
+    prematureLockAssetsCall.content[0].text.includes('FSM STAGE VIOLATION') ||
+    prematureLockAssetsCall.content[0].text.includes('CORE_THEME'),
+    'Error message must indicate FSM stage violation'
+  );
+
+  // Verify calling tool with nonexistent session fails with explicit error
+  const nonexistentCall = await callHandler({
+    params: {
+      name: 'pitch_shot_concepts',
+      arguments: {
+        session_id: 'non-existent-session-xyz',
+        scene_id: 'SCENE_01',
+        shot_id: 'SHOT_01'
+      }
+    }
+  });
+  assert.equal(nonexistentCall.isError, true);
+  assert(nonexistentCall.content[0].text.includes('Session not found'));
+
+  // Cleanup test session files
+  try {
+    fs.unlinkSync(runwayFilePath);
+    fs.unlinkSync(parallelFilePath);
+  } catch {}
+
+  console.log('  ✅ Multi-Session Isolation verified: runway-l12q and parallel sessions are strictly isolated with zero state leakage.');
 
   // Clean up
   fs.rmSync(tmpDir, { recursive: true, force: true });

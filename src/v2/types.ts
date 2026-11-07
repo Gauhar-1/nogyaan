@@ -28,7 +28,7 @@ export const AssetBibleSchema = z.object({
 // Minified Schemas (Just-In-Time Context Slicing)
 // ============================================================================
 
-export type WriterPitchStyle = 'Heartfelt' | 'Viral' | 'Offbeat';
+export type WriterPitchStyle = 'Heartfelt' | 'Viral' | 'Offbeat' | string;
 
 export interface ScriptPitch {
   id: string; // e.g., "A", "B", "C"
@@ -38,7 +38,7 @@ export interface ScriptPitch {
 
 export const ScriptPitchSchema = z.object({
   id: z.string().min(1),
-  style: z.enum(['Heartfelt', 'Viral', 'Offbeat']),
+  style: z.string().min(1),
   txt: z.string().min(1)
 });
 
@@ -81,9 +81,10 @@ export const ShotOptionSchema = z.object({
 
 export interface ScriptOption {
   option_id: string;
-  writer_persona: 'Heartfelt Nostalgist' | 'Viral Disruptor' | 'Offbeat Eccentric';
+  writer_persona?: string;
+  style?: string;
   narrative_block: string;
-  audio_stem: {
+  audio_stem?: {
     dialogue: string | null;
     sfx: string;
   };
@@ -91,16 +92,13 @@ export interface ScriptOption {
 
 export const ScriptOptionSchema = z.object({
   option_id: z.string().min(1),
-  writer_persona: z.enum([
-    'Heartfelt Nostalgist',
-    'Viral Disruptor',
-    'Offbeat Eccentric'
-  ]),
+  writer_persona: z.string().optional().default('Heartfelt Nostalgist'),
+  style: z.string().optional(),
   narrative_block: z.string().min(1),
   audio_stem: z.object({
     dialogue: z.string().nullable(),
     sfx: z.string()
-  })
+  }).optional()
 });
 
 export type LockedScript = ScriptPitch | ScriptOption;
@@ -193,7 +191,7 @@ export const NogyaanStateSchema = z.object({
   global_medium: MediumSchema,
   assets: AssetBibleSchema,
   scenes: z.array(SceneSchema)
-});
+}).passthrough();
 
 export interface AssetExtractionResult {
   assets: AssetBible;

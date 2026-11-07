@@ -10,7 +10,16 @@ import { StateManager } from './state-manager.js';
 
 export interface RerollNodeInput {
   node_id: string; // scene_id (e.g. "SCENE_01") or shot_id (e.g. "SHOT_01" or "SCENE_01:SHOT_01")
-  user_feedback: string;
+  user_feedback?: string;
+  feedback?: string;
+  notes?: string;
+  direction?: string;
+  sota_payload?: string;
+  visual_intent?: string;
+  txt?: string;
+  prmpt?: string;
+  style?: string;
+  state?: NogyaanState;
 }
 
 export interface RerollNodeResult {
@@ -35,18 +44,27 @@ export class RerollService {
    * Prevents burning tokens on re-generating the entire storyboard.
    */
   public async rerollNode(input: RerollNodeInput): Promise<RerollNodeResult> {
+    if (input.state) {
+      this.stateManager.setState(input.state);
+    }
     if (!input.node_id || !input.node_id.trim()) {
       throw new Error('node_id is required for targeted re-roll.');
     }
-    if (!input.user_feedback || !input.user_feedback.trim()) {
-      throw new Error('user_feedback is required for targeted re-roll.');
+    const feedback = input.user_feedback || input.feedback || input.direction || input.notes || '';
+    if (!feedback.trim() && !input.sota_payload && !input.visual_intent && !input.txt) {
+      throw new Error('user_feedback, direction, or replacement content is required for targeted re-roll.');
     }
 
     const contextSlice = this.stateManager.getNodeContextSlice(input.node_id);
     const targetNode = contextSlice.target_node;
 
     if (contextSlice.type === 'scene') {
-      const updatedScript = await this.rerollScriptNode(targetNode as LockedScript, input.user_feedback);
+      const updatedScript = await this.rerollScriptNode(
+        targetNode as LockedScript,
+        feedback,
+        input.txt,
+        input.style
+      );
       const found = this.stateManager.findNode(input.node_id)!;
       const newState = this.stateManager.updateLockedScript(found.scene.scene_id, updatedScript);
 
@@ -62,7 +80,13 @@ export class RerollService {
       if (found.type !== 'shot') {
         throw new Error(`Expected shot node for "${input.node_id}".`);
       }
-      const updatedShot = await this.rerollShotNode(targetNode as LockedShot, input.user_feedback);
+      const updatedShot = await this.rerollShotNode(
+        targetNode as LockedShot,
+        feedback,
+        input.sota_payload || input.prmpt,
+        input.visual_intent || input.txt,
+        input.style
+      );
       const newState = this.stateManager.updateLockedShot(found.scene.scene_id, found.shot_id, updatedShot);
 
       return {
@@ -78,8 +102,28 @@ export class RerollService {
 
   private async rerollScriptNode(
     currentScript: LockedScript,
-    userFeedback: string
+    userFeedback: string,
+    directTxt?: string,
+    directStyle?: string
   ): Promise<LockedScript> {
+    const cur: any = currentScript;
+
+    if (directTxt) {
+      if (cur.txt !== undefined) {
+        return AnyLockedScriptSchema.parse({
+          id: cur.id || 'A',
+          style: directStyle || cur.style || 'Heartfelt',
+          txt: directTxt
+        });
+      }
+      return AnyLockedScriptSchema.parse({
+        option_id: cur.option_id || 'OPT_1',
+        writer_persona: cur.writer_persona || 'Heartfelt Nostalgist',
+        narrative_block: directTxt,
+        audio_stem: cur.audio_stem || { dialogue: null, sfx: null }
+      });
+    }
+
     if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY) {
       try {
         const res = await this.callLlmMiniPrompt(currentScript, userFeedback, 'script');
@@ -90,7 +134,6 @@ export class RerollService {
     }
 
     // Heuristic refinement for ScriptPitch / ScriptOption
-    const cur: any = currentScript;
     if (cur.txt !== undefined) {
       // ScriptPitch
       const rewritten = this.rewriteTextNaturally(cur.txt || '', userFeedback);
@@ -120,8 +163,35 @@ export class RerollService {
 
   private async rerollShotNode(
     currentShot: LockedShot,
-    userFeedback: string
+    userFeedback: string,
+    directPayload?: string,
+    directIntent?: string,
+    directStyle?: string
   ): Promise<LockedShot> {
+    const cur: any = currentShot;
+
+    if (directPayload || directIntent) {
+      const visual_intent = directIntent || cur.visual_intent || cur.txt || '';
+      const sota_payload = directPayload || cur.sota_payload || cur.prmpt || cur.ai_payload || '';
+      const style = directStyle || cur.style || cur.director_persona || 'Auteur';
+
+      if (cur.prmpt !== undefined) {
+        return AnyLockedShotSchema.parse({
+          id: cur.id || 'A',
+          style,
+          txt: visual_intent,
+          prmpt: sota_payload
+        });
+      }
+
+      return AnyLockedShotSchema.parse({
+        id: cur.id || 'A',
+        style,
+        visual_intent,
+        sota_payload
+      });
+    }
+
     if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY) {
       try {
         const res = await this.callLlmMiniPrompt(currentShot, userFeedback, 'shot');
@@ -133,7 +203,6 @@ export class RerollService {
 
     // Heuristic refinement for ShotPitch / ShotOption / ShotNode:
     // Completely rewrite and naturally integrate new instructions, NEVER appending bracketed notes.
-    const cur: any = currentShot;
     if (cur.prmpt !== undefined) {
       // ShotPitch
       const newTxt = this.rewriteTextNaturally(cur.txt || '', userFeedback);
@@ -186,38 +255,120 @@ export class RerollService {
    * explicitly removing bracketed notes and contradictory physical/camera facts.
    */
   private rewriteTextNaturally(baseText: string, instruction: string): string {
+    if (!instruction || !instruction.trim()) return baseText;
+
     const cleanInst = instruction
       .trim()
       .replace(/^\[|\]$/g, '')
-      .replace(/^(direction|note|directorial note|refinement):\s*/i, '');
+      .replace(/^(?:direction|note|directorial note|refinement|user note|user feedback|instructions?):\s*/i, '')
+      .trim();
+
+    // Check for full rewrite commands
+    const fullRewriteMatch = cleanInst.match(/^(?:rewrite fully|completely rewrite|full rewrite|replace with|start from scratch)[:\s]+(.*)/i);
+    if (fullRewriteMatch && fullRewriteMatch[1].trim()) {
+      return fullRewriteMatch[1]
+        .replace(/\[.*?\]/g, '')
+        .replace(/\b(?:live-action|live action|anime|pixar|3d|photorealistic)\b/gi, '')
+        .trim();
+    }
 
     let rewritten = baseText;
 
-    const requestsStanding = /\b(?:stand|stands|standing|rise|rises|rising|upright)\b/i.test(cleanInst);
+    // Erase any existing bracketed notes like [Direction: ...] or [Note applied: ...]
+    rewritten = rewritten.replace(/\s*\[(?:Direction|Note applied|Note|User Note|SYSTEM)[^\]]*\]/gi, '');
+    rewritten = rewritten.replace(/\s*\((?:Directorial adjustment|Refinement|User Note|Note)[^\)]*\)/gi, '');
+
+    // Handle negative prompts: "no X", "remove X", "without X", "don't show X", "eliminate X"
+    const negativePattern = /\b(?:no|remove|without|don't\s+include|don't\s+show|do\s+not\s+include|delete|exclude|eliminate)\s+((?:the\s+|a\s+|an\s+)?([a-zA-Z0-9_\-@]+(?:\s+[a-zA-Z0-9_\-@]+){0,2}))\b/gi;
+    let negMatch;
+    while ((negMatch = negativePattern.exec(cleanInst)) !== null) {
+      const termToRemove = negMatch[2].trim();
+      if (termToRemove.length > 2) {
+        const termRegex = new RegExp(`\\b(?:the\\s+|a\\s+|an\\s+)?${termToRemove}\\b`, 'gi');
+        rewritten = rewritten.replace(termRegex, '');
+      }
+    }
+
+    // Clean up negative instructions from cleanInst if any
+    const remainingInst = cleanInst
+      .replace(negativePattern, '')
+      .replace(/^(?:and|also|plus|\s|,)+/i, '')
+      .replace(/[.,;]+$/, '')
+      .trim();
+
+    const requestsStanding = /\b(?:stand|stands|standing|rise|rises|rising|upright|on their feet)\b/i.test(cleanInst);
     const requestsSitting = !requestsStanding && /\b(?:sit|sits|seated|sitting)\b/i.test(cleanInst);
 
     // Erase contradictory physical postures if direction requests standing
     if (requestsStanding) {
       rewritten = rewritten.replace(/\b(?:is\s+)?(?:seated|sitting|reclined|rests in chair|in the desk chair)\b/gi, 'standing');
       rewritten = rewritten.replace(/\bupright seated posture\b/gi, 'standing posture');
+      rewritten = rewritten.replace(/\bseated at table\b/gi, 'standing');
       rewritten = rewritten.replace(/\bseated\b/gi, 'standing');
+      rewritten = rewritten.replace(/\bsit\b/gi, 'stand');
+      if (!/\bstanding\b/i.test(rewritten)) {
+        if (/Physical Posture:\s*([^.]+)/i.test(rewritten)) {
+          rewritten = rewritten.replace(/Physical Posture:\s*([^.]+)/i, (_m, post) => `Physical Posture: standing, ${post.trim()}`);
+        } else {
+          rewritten = `${rewritten.replace(/[.]+$/, '')}. Subject is standing.`;
+        }
+      }
     }
     // Erase contradictory physical postures if direction requests sitting
     else if (requestsSitting) {
       rewritten = rewritten.replace(/\b(?:is\s+)?(?:standing|stands|walking|pacing)\b/gi, 'seated');
       rewritten = rewritten.replace(/\bstanding posture\b/gi, 'seated posture');
       rewritten = rewritten.replace(/\bstanding\b/gi, 'seated');
+      rewritten = rewritten.replace(/\bstand\b/gi, 'sit');
+      if (!/\bseated\b/i.test(rewritten)) {
+        if (/Physical Posture:\s*([^.]+)/i.test(rewritten)) {
+          rewritten = rewritten.replace(/Physical Posture:\s*([^.]+)/i, (_m, post) => `Physical Posture: seated, ${post.trim()}`);
+        } else {
+          rewritten = `${rewritten.replace(/[.]+$/, '')}. Subject is seated.`;
+        }
+      }
     }
 
-    // Erase any existing bracketed notes like [Direction: ...] or [Note applied: ...]
-    rewritten = rewritten.replace(/\s*\[(?:Direction|Note applied|Note)[^\]]*\]/gi, '');
-    rewritten = rewritten.replace(/\s*\((?:Directorial adjustment|Refinement)[^\)]*\)/gi, '');
+    // Camera movement requests
+    if (/\b(?:static|locked off|locked-off|tripod hold|no camera movement)\b/i.test(cleanInst)) {
+      rewritten = rewritten.replace(/Camera (?:glides|moves|pushes|tracks)[^\.]*\./gi, 'Camera holds locked-off on static tripod at eye-level axis 4 feet from subject.');
+    }
 
-    // Seamlessly weave new instruction into prose without brackets
-    const cleanBase = rewritten.trim().replace(/[.,;]+$/, '');
-    const capitalizedInst = cleanInst.charAt(0).toUpperCase() + cleanInst.slice(1).replace(/[.]+$/, '');
+    // Clean up spaces/punctuation
+    rewritten = rewritten
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\s+([.,;:])/g, '$1')
+      .replace(/([.,;:])\1+/g, '$1')
+      .trim();
 
-    return `${cleanBase}. ${capitalizedInst}.`;
+    // Clean up posture instructions from remainingInst
+    const cleanRemaining = remainingInst
+      .replace(/\b(?:make\s+(?:him|her|them|character|subject)\s+stand(?:\s+up)?(?:\s+instead\s+of\s+sit(?:ting)?|upright)?)\b/gi, '')
+      .replace(/\b(?:make\s+(?:him|her|them|character|subject)\s+sit(?:\s+down)?(?:\s+instead\s+of\s+stand(?:ing)?)?)\b/gi, '')
+      .replace(/\b(?:stand(?:\s+up)?(?:\s+instead\s+of\s+sit(?:ting)?)?)\b/gi, '')
+      .replace(/\b(?:sit(?:\s+down)?(?:\s+instead\s+of\s+stand(?:ing)?)?)\b/gi, '')
+      .replace(/^(?:and|also|plus|\s|,)+/i, '')
+      .replace(/[.,;]+$/, '')
+      .trim();
+
+    // If there is a remaining positive instruction, weave it naturally
+    if (cleanRemaining && cleanRemaining.length > 2) {
+      // If the base text has "Action: ...", integrate into action
+      if (/Action:\s*([^.]+)\./i.test(rewritten)) {
+        rewritten = rewritten.replace(/Action:\s*([^.]+)\./i, (_match, act) => {
+          return `Action: ${act.trim()}, with ${cleanRemaining.toLowerCase()}.`;
+        });
+      } else {
+        const cleanBase = rewritten.replace(/[.,;]+$/, '');
+        const capitalizedInst = cleanRemaining.charAt(0).toUpperCase() + cleanRemaining.slice(1);
+        rewritten = `${cleanBase}. ${capitalizedInst}.`;
+      }
+    }
+
+    return rewritten
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\[.*?\]/g, '')
+      .trim();
   }
 
   private async callLlmMiniPrompt(

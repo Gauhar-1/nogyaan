@@ -12,11 +12,13 @@ import {
   SHOT_CONCEPTS_SYSTEM_PROMPT,
   COMPILE_SOTA_PROMPT_SYSTEM_PROMPT
 } from './prompts.js';
-import { StateManager } from './state-manager.js';
+import { StateManager, parseStrictEgress } from './state-manager.js';
 
 export interface PitchShotInput {
   scene_id: string; // e.g. "SCENE_01"
   shot_id?: string; // e.g. "SHOT_01"
+  options?: any[];
+  pitches?: any[];
   state?: NogyaanState;
 }
 
@@ -24,6 +26,8 @@ export interface PitchShotConceptsInput {
   scene_id: string;
   shot_id?: string;
   spatial_memory?: string[];
+  concepts?: Record<'1' | '2' | '3', ShotConcept> | Record<string, any>;
+  options?: any;
   state?: NogyaanState;
 }
 
@@ -31,6 +35,10 @@ export interface CompileSotaPromptInput {
   scene_id: string;
   shot_id?: string;
   selected_option: string; // "1" | "2" | "3" | "Auteur" | "Kinetic" | "Theatrical" or visual intent text
+  sota_payload?: string;
+  visual_intent?: string;
+  egress?: string;
+  spatial_facts?: string[];
   spatial_memory?: string[];
   last_shot_egress?: string;
   state?: NogyaanState;
@@ -68,7 +76,26 @@ export class DpPitchService {
 
     let concepts: Record<'1' | '2' | '3', ShotConcept> | null = null;
 
-    if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY) {
+    // Direct dynamic pass-through if provided
+    const directConcepts = input.concepts || input.options;
+    if (directConcepts) {
+      const c = directConcepts as any;
+      if (Array.isArray(c) && c.length >= 3) {
+        concepts = {
+          '1': { option: '1', persona: c[0].persona || 'Auteur', visual_intent: c[0].visual_intent || c[0].txt || String(c[0]) },
+          '2': { option: '2', persona: c[1].persona || 'Kinetic', visual_intent: c[1].visual_intent || c[1].txt || String(c[1]) },
+          '3': { option: '3', persona: c[2].persona || 'Theatrical', visual_intent: c[2].visual_intent || c[2].txt || String(c[2]) }
+        };
+      } else if (c['1'] && c['2'] && c['3']) {
+        concepts = {
+          '1': { option: '1', persona: c['1'].persona || 'Auteur', visual_intent: c['1'].visual_intent || c['1'].txt || String(c['1']) },
+          '2': { option: '2', persona: c['2'].persona || 'Kinetic', visual_intent: c['2'].visual_intent || c['2'].txt || String(c['2']) },
+          '3': { option: '3', persona: c['3'].persona || 'Theatrical', visual_intent: c['3'].visual_intent || c['3'].txt || String(c['3']) }
+        };
+      }
+    }
+
+    if (!concepts && (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY)) {
       try {
         concepts = await this.callLlmConcepts(input.scene_id, resolvedShotId, contextSlice);
       } catch (err: any) {
@@ -129,42 +156,47 @@ export class DpPitchService {
     const lastEgress = input.last_shot_egress || contextSlice.last_shot_egress || '';
 
     // 1. Resolve visual_intent
-    let visualIntent = '';
-    const cacheKey = `${input.scene_id}:${resolvedShotId}`;
-    const cached = this.cachedConcepts.get(cacheKey) || this.cachedConcepts.get(input.scene_id);
+    let visualIntent = input.visual_intent || '';
+    if (!visualIntent) {
+      const cacheKey = `${input.scene_id}:${resolvedShotId}`;
+      const cached = this.cachedConcepts.get(cacheKey) || this.cachedConcepts.get(input.scene_id);
 
-    const sel = input.selected_option.trim();
-    if (sel === '1' || sel === 'A' || sel.toLowerCase() === 'auteur') {
-      visualIntent = cached?.['1']?.visual_intent || this.generateHeuristicConcepts(input.scene_id, resolvedShotId, contextSlice)['1'].visual_intent;
-    } else if (sel === '2' || sel === 'B' || sel.toLowerCase() === 'kinetic') {
-      visualIntent = cached?.['2']?.visual_intent || this.generateHeuristicConcepts(input.scene_id, resolvedShotId, contextSlice)['2'].visual_intent;
-    } else if (sel === '3' || sel === 'C' || sel.toLowerCase() === 'theatrical') {
-      visualIntent = cached?.['3']?.visual_intent || this.generateHeuristicConcepts(input.scene_id, resolvedShotId, contextSlice)['3'].visual_intent;
-    } else {
-      visualIntent = input.selected_option;
+      const sel = (input.selected_option || '1').trim();
+      if (sel === '1' || sel === 'A' || sel.toLowerCase() === 'auteur') {
+        visualIntent = cached?.['1']?.visual_intent || this.generateHeuristicConcepts(input.scene_id, resolvedShotId, contextSlice)['1'].visual_intent;
+      } else if (sel === '2' || sel === 'B' || sel.toLowerCase() === 'kinetic') {
+        visualIntent = cached?.['2']?.visual_intent || this.generateHeuristicConcepts(input.scene_id, resolvedShotId, contextSlice)['2'].visual_intent;
+      } else if (sel === '3' || sel === 'C' || sel.toLowerCase() === 'theatrical') {
+        visualIntent = cached?.['3']?.visual_intent || this.generateHeuristicConcepts(input.scene_id, resolvedShotId, contextSlice)['3'].visual_intent;
+      } else {
+        visualIntent = input.selected_option;
+      }
     }
 
     // 2. Generate SOTA Video Payload adhering to the 4 strict physics rules
-    let sotaPayload = '';
-    let egress = '';
-    let spatialFacts: string[] = [];
+    // If the caller / LLM directly provided a dynamic sota_payload, use it directly without template overrides!
+    let sotaPayload = input.sota_payload ? input.sota_payload.trim() : '';
+    let egress = input.egress ? parseStrictEgress(input.egress) : '';
+    let spatialFacts: string[] = input.spatial_facts || [];
 
-    if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY) {
-      try {
-        const llmResult = await this.callLlmSotaCompile(
-          input.scene_id,
-          resolvedShotId,
-          visualIntent,
-          lastEgress,
-          contextSlice
-        );
-        if (llmResult) {
-          sotaPayload = llmResult.sota_payload;
-          egress = llmResult.egress;
-          spatialFacts = llmResult.spatial_facts || [];
+    if (!sotaPayload) {
+      if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY) {
+        try {
+          const llmResult = await this.callLlmSotaCompile(
+            input.scene_id,
+            resolvedShotId,
+            visualIntent,
+            lastEgress,
+            contextSlice
+          );
+          if (llmResult) {
+            sotaPayload = llmResult.sota_payload;
+            egress = parseStrictEgress(llmResult.egress);
+            spatialFacts = llmResult.spatial_facts || [];
+          }
+        } catch (err: any) {
+          console.warn(`[DpPitch] LLM SOTA compilation failed (${err.message}). Using heuristic compiler.`);
         }
-      } catch (err: any) {
-        console.warn(`[DpPitch] LLM SOTA compilation failed (${err.message}). Using heuristic compiler.`);
       }
     }
 
@@ -177,8 +209,13 @@ export class DpPitchService {
         contextSlice
       );
       sotaPayload = heuristic.sota_payload;
-      egress = heuristic.egress;
-      spatialFacts = heuristic.spatial_facts;
+      if (!egress) egress = parseStrictEgress(heuristic.egress);
+      if (spatialFacts.length === 0) spatialFacts = heuristic.spatial_facts;
+    }
+
+    // Ensure egress is strictly parsed and free of meta-notes
+    if (!egress) {
+      egress = parseStrictEgress(sotaPayload);
     }
 
     // Strip any accidental art style buzzwords
@@ -266,7 +303,7 @@ export class DpPitchService {
       '1': {
         option: '1',
         persona: 'Auteur',
-        visual_intent: `${ingressNote} The camera glides with reverence into ${charRef1}'s emotional space. Soft wrapping chiaroscuro light sculpts their contemplative profile against the velvety depths of ${bgRef}, pulling the viewer into the raw truth of the moment as they interact with ${prodRef}.`
+        visual_intent: `${ingressNote} The camera glides with reverence into ${charRef1}'s emotional space. Soft wrapping chiaroscuro light sculpts their contemplative profile against ${bgRef}, pulling the viewer into the raw truth of the moment as they interact with ${prodRef}.`
       },
       '2': {
         option: '2',
@@ -276,7 +313,7 @@ export class DpPitchService {
       '3': {
         option: '3',
         persona: 'Theatrical',
-        visual_intent: `${ingressNote} An obsessive exercise in architectural symmetry. ${charRef1} is positioned dead-center like a Wes Anderson dollhouse tableau, moving with dry clockwork precision under saturated, crisp practical lighting with ${prodRef} positioned on axis.`
+        visual_intent: `${ingressNote} An obsessive exercise in architectural symmetry. ${charRef1} is positioned dead-center in balanced framing, moving with dry clockwork precision under saturated, crisp practical lighting with ${prodRef} positioned on axis.`
       }
     };
   }
@@ -303,7 +340,7 @@ export class DpPitchService {
     // 1. Ingress Handshake
     const ingressClause = lastEgress && lastEgress.trim().length > 0
       ? `Shot begins with ${lastEgress}, seamless image-loop continuity from previous shot`
-      : `Shot begins with ${charRef1} positioned inside ${bgRef}, seated upright with spine straight`;
+      : `Shot begins with ${charRef1} positioned inside ${bgRef}, maintaining composed physical balance`;
 
     // 2. Single-Vector Camera (NO compound pan-tilts)
     const isKinetic = visualIntent.toLowerCase().includes('kinetic') || visualIntent.toLowerCase().includes('raw');
@@ -319,16 +356,16 @@ export class DpPitchService {
     const lightOrigin = 'Primary key light originating from screen-left high window casting soft natural directional falloff, ambient warm fill from screen-right';
 
     // 4. Physical Posture & Eyeline
-    const postureClause = `${charRef1} maintains upright seated posture, shoulders relaxed, hands resting on table surface, eyeline locked 10 degrees screen-left towards ${prodRef}`;
+    const postureClause = `${charRef1} maintains upright posture, shoulders relaxed, hands positioned in foreground workspace, eyeline locked 10 degrees screen-left towards ${prodRef}`;
 
     // 5. Egress Handshake
-    const egressClause = `${charRef1}'s right hand rests flat on wooden table beside ${prodRef}, eyes steady in calm focus`;
+    const egressClause = `${charRef1} holds steady resting posture beside ${prodRef}, eyes locked in calm focus`;
 
-    const fullPayload = `${ingressClause}. ${cameraClause}. Spatial Anchor: ${lightOrigin}. Physical Posture: ${postureClause}. Action: Continuous subtle micro-movement and natural breathing, atmospheric dust motes catching backlight. Shot ends with ${egressClause}.`;
+    const fullPayload = `${ingressClause}. ${cameraClause}. Spatial Anchor: ${lightOrigin}. Physical Posture: ${postureClause}. Action: Continuous subtle micro-movement and natural breathing. Shot ends with ${egressClause}.`;
 
     const spatialFacts = [
-      `${charRef1} is seated at table in ${bgRef}`,
-      `${prodRef} is on table screen-left`
+      `${charRef1} is positioned in ${bgRef}`,
+      `${prodRef} is positioned screen-left of ${charRef1}`
     ];
 
     return {
@@ -539,6 +576,23 @@ Compile into raw minified JSON:
       sm.setState(input.state);
     }
     const shot_id = input.shot_id || 'SHOT_01';
+
+    const dynamicPitches = input.options || input.pitches;
+    if (Array.isArray(dynamicPitches) && dynamicPitches.length > 0) {
+      return dynamicPitches.map((p, idx) => {
+        const id = p.id || (idx === 0 ? 'A' : idx === 1 ? 'B' : 'C');
+        const style = p.style || p.persona || (idx === 0 ? 'Auteur' : idx === 1 ? 'Kinetic' : 'Theatrical');
+        const txt = p.txt || p.visual_intent || p.text || '';
+        const prmpt = p.prmpt || p.sota_payload || p.prompt || '';
+        return ShotPitchSchema.parse({
+          id,
+          style,
+          txt,
+          prmpt
+        });
+      });
+    }
+
     const pitch = await this.pitchShotConcepts({
       scene_id: input.scene_id,
       shot_id,

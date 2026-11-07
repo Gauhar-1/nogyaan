@@ -104,7 +104,13 @@ function startStudioServer(port: number = 4321): void {
     // API endpoint returning current active session state as raw UTF-8 JSON
     if (parsedUrl.pathname === '/api/graph') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      const currentSession = sessionService.loadSession();
+      const requestedId = parsedUrl.searchParams.get('session_id') || undefined;
+      let currentSession = null;
+      try {
+        currentSession = requestedId
+          ? sessionService.loadSession(requestedId)
+          : sessionService.getLatestSession();
+      } catch {}
       if (currentSession) {
         res.end(JSON.stringify(currentSession, null, 2));
       } else {
@@ -120,14 +126,18 @@ function startStudioServer(port: number = 4321): void {
     // 1. Get V2 State (GET /api/v2/state)
     if (req.method === 'GET' && parsedUrl.pathname === '/api/v2/state') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(stateManager.getState(), null, 2));
+      const requestedId = parsedUrl.searchParams.get('session_id');
+      const sm = requestedId ? StateManager.forSession(requestedId) : stateManager;
+      res.end(JSON.stringify(sm.getState(), null, 2));
       return;
     }
 
     // 1.5. Native JSON-to-PDF Export (GET /api/v2/export-pdf or /api/v2/pdf)
     if (req.method === 'GET' && (parsedUrl.pathname === '/api/v2/export-pdf' || parsedUrl.pathname === '/api/v2/pdf')) {
       try {
-        const currentState = stateManager.getState();
+        const requestedId = parsedUrl.searchParams.get('session_id');
+        const sm = requestedId ? StateManager.forSession(requestedId) : stateManager;
+        const currentState = sm.getState();
         const pdfBuffer = generateTreatmentPdfBuffer(currentState);
         const filename = currentState.project_id
           ? `${currentState.project_id.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-blueprint.pdf`

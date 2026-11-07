@@ -3,6 +3,9 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
 import open from 'open';
 import { PresetRegistryService } from '../services/preset-registry.service.js';
 import { PromptCompilerService } from '../services/prompt-compiler.service.js';
@@ -18,6 +21,185 @@ import {
   Medium
 } from '../v2/types.js';
 
+// ============================================================================
+// Explicit Zod Schemas Enforcing session_id as REQUIRED for All MCP Tools
+// ============================================================================
+
+export const listPresetsSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Unique project session ID')
+});
+
+export const initBriefSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Unique project session ID (e.g. "runway-l12q")'),
+  company: z.string().min(1, 'Company name is required').describe('Company or brand name'),
+  product: z.string().min(1, 'Product is required').describe('Product or service being advertised'),
+  goal: z.string().min(1, 'Goal is required').describe('Campaign conversion or emotional objective'),
+  preset: z.string().optional().describe('Narrative preset to apply'),
+  preset_id: z.string().optional().describe('Alias for preset argument'),
+  brandFriction: z.string().optional().describe('Human or cultural friction this brand resolves'),
+  audience: z.string().optional().describe('Target demographic or cultural segment'),
+  initialOptions: z.array(z.any()).optional().describe('Initial narrative options 1, 2, 3 for CORE_THEME')
+});
+
+export const lockCoreThemeSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  chosen_theme_id: z.enum(['1', '2', '3']).describe('Chosen core theme route ("1", "2", or "3")'),
+  theme_title: z.string().min(1, 'theme_title is required').describe('Short descriptive title of the selected theme'),
+  theme_premise: z.string().min(1, 'theme_premise is required').describe('Full narrative premise and emotional core'),
+  nextOptions: z.array(z.any()).optional().describe('Proposed 3 opening visual scenarios for Scene 1')
+});
+
+export const branchSceneSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  action: z.enum(['commit', 'regenerate']).describe('"commit" to lock an option, "regenerate" (R) to overwrite options'),
+  scene_number: z.number().optional().describe('Physical scene number being locked (1 to 4)'),
+  chosen_option_id: z.enum(['1', '2', '3']).optional().describe('Selected option identifier'),
+  selectedOptionId: z.enum(['1', '2', '3']).optional().describe('Alias for chosen_option_id'),
+  chosen_narrative_summary: z.string().optional().describe('Full narrative beat summary for the locked scene'),
+  title: z.string().optional().describe('Title for the scene'),
+  description: z.string().optional().describe('Scene description'),
+  treatmentProse: z.string().optional().describe('Screenplay treatment action'),
+  exit_frame_anchor: z.string().optional().describe('Exact physical posture and position at scene exit'),
+  nextOptions: z.array(z.any()).optional().describe('Branching options for next scene or regenerated current scene'),
+  pruning_confirmation: z.array(z.string()).optional().describe('Confirmation IDs of rejected branches pruned')
+});
+
+export const lockAssetsSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  characters: z.union([z.array(z.any()), z.record(z.any())]).optional().describe('Character assets (array or dictionary)'),
+  environments: z.union([z.array(z.any()), z.record(z.any())]).optional().describe('Environment assets (array or dictionary)'),
+  backgrounds: z.union([z.array(z.any()), z.record(z.any())]).optional().describe('Alias for environments (array or dictionary)'),
+  product: z.any().optional().describe('Hero product definition (object or array)'),
+  products: z.any().optional().describe('Alias for product')
+}).passthrough();
+
+export const extractActiveAssetsSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().optional().describe('Optional target scene ID'),
+  assets: z.any().optional().describe('Directly extracted assets (characters, environments/backgrounds, product)'),
+  extraction: z.any().optional().describe('Alias for assets'),
+  scene_tagging: z.any().optional().describe('Optional scene-to-asset tagging')
+}).passthrough();
+
+export const pitchScriptOptionsSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().min(1, 'scene_id is required').describe('Scene ID to pitch script options for (e.g. "SCENE_01")'),
+  user_guidance: z.string().optional().describe('Optional directorial steering or thematic guidance'),
+  options: z.array(z.any()).optional().describe('Dynamic script pitch options generated by LLM'),
+  pitches: z.array(z.any()).optional().describe('Alias for options')
+}).passthrough();
+
+export const lockScriptOptionSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().min(1, 'scene_id is required').describe('Target scene ID (e.g. "SCENE_01")'),
+  script: z.any().optional().describe('The chosen ScriptPitch or ScriptOption object'),
+  pitch: z.any().optional().describe('Alias for script parameter'),
+  option_id: z.string().optional().describe('Optional option_id if selecting from pitched options'),
+  id: z.string().optional().describe('Alias for option_id'),
+  style: z.string().optional().describe('Custom style/tone name (e.g. "Deadpan", "Heartfelt")'),
+  txt: z.string().optional().describe('Script text or narrative block'),
+  narrative_block: z.string().optional().describe('Script narrative block')
+}).passthrough();
+
+export const pitchShotConceptsSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().min(1, 'scene_id is required').describe('Scene ID (e.g. "SCENE_01")'),
+  shot_id: z.string().optional().describe('Optional shot identifier (e.g. "SHOT_01")'),
+  spatial_memory: z.array(z.string()).optional().describe('Optional rolling physical room geometry facts'),
+  concepts: z.any().optional().describe('Dynamic shot concepts generated by LLM (options 1, 2, 3)'),
+  options: z.any().optional().describe('Alias for concepts')
+}).passthrough();
+
+export const compileSotaPromptSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().min(1, 'scene_id is required').describe('Scene ID (e.g. "SCENE_01")'),
+  selected_option: z.string().min(1, 'selected_option is required').describe('The selected shot option ("1", "2", "3") or visual intent text'),
+  option: z.string().optional().describe('Alias for selected_option'),
+  shot_id: z.string().optional().describe('Optional shot identifier (e.g. "SHOT_01")'),
+  spatial_memory: z.array(z.string()).optional().describe('Optional rolling physical room geometry facts'),
+  last_shot_egress: z.string().optional().describe('Optional egress of preceding shot'),
+  sota_payload: z.string().optional().describe('Direct dynamic SOTA prompt payload generated by LLM'),
+  visual_intent: z.string().optional().describe('Direct dynamic visual intent text generated by LLM'),
+  egress: z.string().optional().describe('Direct egress terminating clause'),
+  spatial_facts: z.array(z.string()).optional().describe('Direct physical spatial facts established in this shot'),
+  is_final_scene: z.boolean().optional(),
+  is_final_shot: z.boolean().optional(),
+  final_shot: z.boolean().optional()
+}).passthrough();
+
+export const pitchShotOptionsSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().min(1, 'scene_id is required').describe('Scene ID (e.g. "SCENE_01")'),
+  shot_id: z.string().optional().describe('Shot identifier (e.g. "SHOT_01")'),
+  options: z.array(z.any()).optional().describe('Dynamic shot pitches generated by LLM'),
+  pitches: z.array(z.any()).optional().describe('Alias for options')
+}).passthrough();
+
+export const lockShotOptionSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().min(1, 'scene_id is required').describe('Scene ID'),
+  shot_id: z.string().min(1, 'shot_id is required').describe('Shot identifier (e.g. "SHOT_01")'),
+  shot: z.any().optional().describe('The chosen ShotPitch or ShotOption object'),
+  pitch: z.any().optional().describe('Alias for shot parameter'),
+  spatial_facts: z.array(z.string()).optional().describe('Physical facts established in this shot'),
+  spatial_memory_updates: z.array(z.string()).optional().describe('Alias for spatial_facts'),
+  is_final_scene: z.boolean().optional(),
+  is_final_shot: z.boolean().optional(),
+  final_shot: z.boolean().optional()
+}).passthrough();
+
+export const setDirectorNotesSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  notes: z.string().min(1, 'notes is required').describe('Directorial notes and persistent cinematic rules')
+}).passthrough();
+
+export const rerollNodeSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  node_id: z.string().optional().describe('Target node identifier'),
+  scene_id: z.string().optional().describe('Scene identifier'),
+  shot_id: z.string().optional().describe('Shot identifier'),
+  user_feedback: z.string().optional().describe('Targeted directorial refinement feedback'),
+  direction: z.string().optional().describe('Alternative parameter for user direction'),
+  notes: z.string().optional().describe('Alternative parameter for user notes'),
+  sota_payload: z.string().optional().describe('Direct rewritten SOTA payload'),
+  visual_intent: z.string().optional().describe('Direct rewritten visual intent'),
+  txt: z.string().optional().describe('Direct rewritten script text'),
+  prmpt: z.string().optional().describe('Direct rewritten prompt'),
+  style: z.string().optional().describe('Direct rewritten style')
+}).passthrough();
+
+export const rerollShotSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().optional().describe('Scene identifier (e.g., "SCENE_01")'),
+  shot_id: z.string().optional().describe('Shot identifier (e.g., "SHOT_01")'),
+  node_id: z.string().optional().describe('Composite node identifier (e.g. "SCENE_01:SHOT_01")'),
+  user_feedback: z.string().optional().describe('Directorial refinement feedback'),
+  direction: z.string().optional().describe('Alternative parameter for user direction'),
+  notes: z.string().optional().describe('Alternative parameter for user notes'),
+  sota_payload: z.string().optional().describe('Direct rewritten SOTA payload'),
+  visual_intent: z.string().optional().describe('Direct rewritten visual intent'),
+  txt: z.string().optional().describe('Direct rewritten script text'),
+  prmpt: z.string().optional().describe('Direct rewritten prompt'),
+  style: z.string().optional().describe('Direct rewritten style')
+}).passthrough();
+
+export const getNogyaanStateSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID')
+});
+
+export const updateAssetBibleSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  characters: z.record(z.string()).optional().describe('Map of character ID to description'),
+  backgrounds: z.record(z.string()).optional().describe('Map of background ID to description'),
+  product: z.string().optional().describe('Hero product description'),
+  global_medium: z.enum(['Live-Action Cinematic', '2D Anime', '3D Pixar Style']).optional().describe('Global rendering medium'),
+  global_director_notes: z.string().optional().describe('Persistent cinematic rules applying across all scenes')
+});
+
+// ============================================================================
+// Tool Registration Implementation
+// ============================================================================
+
 export function registerMcpTools(
   server: Server,
   sessionService: SessionDagService,
@@ -29,15 +211,16 @@ export function registerMcpTools(
   rerollServiceInput?: RerollService,
   assetLockerInput?: AssetLockerService
 ): void {
-  const stateManager = stateManagerInput || new StateManager();
-  const writersRoom = writersRoomInput || new WritersRoomService(stateManager);
-  const assetLocker = assetLockerInput || new AssetLockerService(stateManager);
-  const dpPitch = dpPitchInput || new DpPitchService(stateManager);
-  const rerollService = rerollServiceInput || new RerollService(stateManager);
-
   const presetIds = presetRegistry.getPresetIds();
 
-  // Handler for listing tools
+  function getSessionStateManager(sessionId: string): StateManager {
+    if (stateManagerInput && (stateManagerInput.getSessionId() === sessionId || stateManagerInput.getState().project_id === sessionId)) {
+      return stateManagerInput;
+    }
+    return StateManager.forSession(sessionId, sessionService.getWorkspaceDir());
+  }
+
+  // Handler for listing tools with REQUIRED session_id in schema
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: [
@@ -47,16 +230,26 @@ export function registerMcpTools(
             'Returns a list of all loaded narrative presets (e.g., indian-d2c-story, dev-product-launch, tiktok-ugc-hook) with their philosophy, lens palette, and strict dialogue language rules.',
           inputSchema: {
             type: 'object',
-            properties: {}
+            properties: {
+              session_id: {
+                type: 'string',
+                description: 'Unique project session ID'
+              }
+            },
+            required: ['session_id']
           }
         },
         {
           name: 'init_brief',
           description:
-            'Step 1: Initializes brand brief and creates a new isolated session. Sets stage to CORE_THEME. Scans for anti-jargon compliance. Requires company, product, and goal. Claude must then call lock_core_theme.',
+            'Step 1: Initializes brand brief and creates a new isolated session strictly at .nogyaan/sessions/${session_id}.json. Sets stage to CORE_THEME. Scans for anti-jargon compliance. Requires session_id, company, product, and goal. Claude must then call lock_core_theme.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Unique project session ID (e.g. "runway-l12q")'
+              },
               company: {
                 type: 'string',
                 description: 'Company or brand name (e.g. "ChaiWaale", "DevScale")'
@@ -92,19 +285,19 @@ export function registerMcpTools(
                 description: 'Initial narrative options 1, 2, 3 for CORE_THEME'
               }
             },
-            required: ['company', 'product', 'goal']
+            required: ['session_id', 'company', 'product', 'goal']
           }
         },
         {
           name: 'lock_core_theme',
           description:
-            'Step 1.5: Locks the overarching Core Campaign Premise (an abstract narrative concept, NOT a physical scene). Transitions stage from CORE_THEME to SCENE_1_SETUP.',
+            'Step 1.5: Locks the overarching Core Campaign Premise into isolated session state. Transitions stage from CORE_THEME to SCENE_1_SETUP.',
           inputSchema: {
             type: 'object',
             properties: {
               session_id: {
                 type: 'string',
-                description: 'Target session ID (defaults to latest active)'
+                description: 'Target session ID'
               },
               chosen_theme_id: {
                 type: 'string',
@@ -124,19 +317,19 @@ export function registerMcpTools(
                 description: 'Proposed 3 opening visual scenarios for Scene 1 (Act I — Setup)'
               }
             },
-            required: ['chosen_theme_id', 'theme_title', 'theme_premise']
+            required: ['session_id', 'chosen_theme_id', 'theme_title', 'theme_premise']
           }
         },
         {
           name: 'branch_scene',
           description:
-            'Step 2: Commits physical Scene 1, 2, 3, or 4 with internal continuity bridges and prunes rejected options. Scene 1 has NO incoming entry frame. Scene > 1 enforces continuity from previous scene.',
+            'Step 2: Commits physical Scene 1, 2, 3, or 4 with internal continuity bridges into isolated session state and prunes rejected options.',
           inputSchema: {
             type: 'object',
             properties: {
               session_id: {
                 type: 'string',
-                description: 'Target session ID (defaults to latest active session)'
+                description: 'Target session ID'
               },
               action: {
                 type: 'string',
@@ -188,43 +381,47 @@ export function registerMcpTools(
                 description: 'Confirmation IDs of rejected branches pruned'
               }
             },
-            required: ['action']
+            required: ['session_id', 'action']
           }
         },
         {
           name: 'lock_assets',
           description:
-            'Step 3: Locks visual assets (characters CHAR_01..N, environments BG_01..N, and product PROD_01). Generates Midjourney/Flux reference prompts.',
+            'Step 3 / Upsert Assets: Locks or updates visual assets (characters, environments/backgrounds, and hero product) in the session state. Can be run multiple times to update descriptions. Accepts arrays or dictionaries with arbitrary keys.',
           inputSchema: {
             type: 'object',
             properties: {
               session_id: {
                 type: 'string',
-                description: 'Target session ID (defaults to latest active)'
+                description: 'Target session ID'
               },
               characters: {
-                type: 'array',
-                description: 'Array of character definitions with CHAR_01..N IDs'
+                description: 'Array or dictionary of character definitions with arbitrary keys/descriptions'
               },
               environments: {
-                type: 'array',
-                description: 'Array of background/location definitions with BG_01..N IDs'
+                description: 'Array or dictionary of background/location definitions with arbitrary keys/descriptions'
+              },
+              backgrounds: {
+                description: 'Alias for environments'
               },
               product: {
-                type: 'object',
-                description: 'Hero product definition with PROD_01 ID'
+                description: 'Hero product definition (object, string, or array)'
               }
             },
-            required: ['characters', 'environments']
+            required: ['session_id']
           }
         },
         {
           name: 'pitch_script_options',
           description:
-            'Phase 1 Writer\'s Room: JIT context-sliced narrative branching. Passes ONLY core premise and Scene N-1 locked narrative (zero camera data, zero assets). Generates exactly 3 minified ScriptPitch options (Heartfelt, Viral, Offbeat).',
+            'Phase 1 Writer\'s Room: JIT context-sliced narrative branching for the session. Passes ONLY core premise and Scene N-1 locked narrative. Generates exactly 3 minified ScriptPitch options.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               scene_id: {
                 type: 'string',
                 description: 'Scene ID to pitch script options for (e.g. "SCENE_01")'
@@ -234,16 +431,20 @@ export function registerMcpTools(
                 description: 'Optional directorial steering or thematic guidance'
               }
             },
-            required: ['scene_id']
+            required: ['session_id', 'scene_id']
           }
         },
         {
           name: 'lock_script_option',
           description:
-            'Locks a chosen ScriptPitch or ScriptOption into the local nogyaan-state.json for the specified scene.',
+            'Locks a chosen ScriptPitch or ScriptOption into the isolated session file for the specified scene.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               scene_id: {
                 type: 'string',
                 description: 'Target scene ID (e.g. "SCENE_01")'
@@ -257,25 +458,35 @@ export function registerMcpTools(
                 description: 'Optional option_id if selecting from pitched options'
               }
             },
-            required: ['scene_id']
+            required: ['session_id', 'scene_id']
           }
         },
         {
           name: 'extract_active_assets',
           description:
-            'Phase 2 Asset Locker: Analyzes locked 4-scene narrative to identify required cast, backgrounds, and products, returning an AssetBible and tagging each scene with active_refs (e.g., ["@CHAR_01", "@BG_02"]) to prevent passing unused characters into downstream DP shots.',
+            'Phase 2 Asset Locker: Analyzes locked 4-scene narrative for the session to identify required cast, backgrounds, and products, returning an AssetBible and tagging active_refs strictly in .nogyaan/sessions/${session_id}.json.',
           inputSchema: {
             type: 'object',
-            properties: {}
+            properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              }
+            },
+            required: ['session_id']
           }
         },
         {
           name: 'pitch_shot_concepts',
           description:
-            'Tool A (DP Suite): Pitches exactly 3 human-readable visual intent concepts (1: Auteur, 2: Kinetic, 3: Theatrical) for a single shot without technical camera data or JSON bloat, then HALTS to yield to user keystroke selection (1, 2, or 3).',
+            'Tool A (DP Suite): Pitches exactly 3 human-readable visual intent concepts (1: Auteur, 2: Kinetic, 3: Theatrical) for a single shot without technical camera data or JSON bloat, then HALTS to yield to user keystroke selection.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               scene_id: {
                 type: 'string',
                 description: 'Scene ID (e.g. "SCENE_01")'
@@ -290,16 +501,20 @@ export function registerMcpTools(
                 description: 'Optional rolling physical room geometry facts'
               }
             },
-            required: ['scene_id']
+            required: ['session_id', 'scene_id']
           }
         },
         {
           name: 'compile_sota_prompt',
           description:
-            'Tool B (DP Suite): Compiles the user\'s selected shot concept (1, 2, or 3) into a single, dense technical AI video diffusion payload for SOTA models (Kling, Runway, Sora) with single-vector camera, spatial anchoring, posture/eyeline, and temporal ingress/egress handshakes, then saves to local JSON state.',
+            'Tool B (DP Suite): Compiles the user\'s selected shot concept into a single, dense technical AI video diffusion payload and saves strictly to the isolated session JSON state.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               scene_id: {
                 type: 'string',
                 description: 'Scene ID (e.g. "SCENE_01")'
@@ -322,16 +537,20 @@ export function registerMcpTools(
                 description: 'Optional egress of preceding shot to establish temporal ingress handshake'
               }
             },
-            required: ['scene_id', 'selected_option']
+            required: ['session_id', 'scene_id', 'selected_option']
           }
         },
         {
           name: 'pitch_shot_options',
           description:
-            'Phase 3 DP Suite: Strictly sequential shot-by-shot pitch. Receives Scene X, Shot Y, pitches EXACTLY 3 options (Auteur, Kinetic, Theatrical) for that single shot, and completely HALTS execution to yield to the user. The AI must STOP and do nothing until the user explicitly selects one of the 3 options in the UI.',
+            'Phase 3 DP Suite: Strictly sequential shot-by-shot pitch for the session. Receives Scene X, Shot Y, pitches EXACTLY 3 options (Auteur, Kinetic, Theatrical) for that single shot, and completely HALTS execution to yield to the user.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               scene_id: {
                 type: 'string',
                 description: 'Scene ID (e.g. "SCENE_01")'
@@ -341,16 +560,20 @@ export function registerMcpTools(
                 description: 'Shot identifier (e.g. "SHOT_01")'
               }
             },
-            required: ['scene_id', 'shot_id']
+            required: ['session_id', 'scene_id', 'shot_id']
           }
         },
         {
           name: 'lock_shot_option',
           description:
-            'Locks a chosen ShotPitch or ShotOption into the local nogyaan-state.json for the specified scene and shot.',
+            'Locks a chosen ShotPitch or ShotOption strictly into the isolated session file for the specified scene and shot.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               scene_id: {
                 type: 'string',
                 description: 'Scene ID'
@@ -370,31 +593,39 @@ export function registerMcpTools(
                   'Optional physical facts established in this shot (e.g. ["Sharma is seated at table 4", "Phone is on table"])'
               }
             },
-            required: ['scene_id', 'shot_id', 'shot']
+            required: ['session_id', 'scene_id', 'shot_id', 'shot']
           }
         },
         {
           name: 'set_director_notes',
           description:
-            'Sets persistent cinematic rules or directorial constraints in nogyaan-state.json (e.g., "Scene 4 must visually mirror Scene 1") that apply across all scenes.',
+            'Sets persistent cinematic rules or directorial constraints in the session state applying across all scenes.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               notes: {
                 type: 'string',
                 description: 'Directorial notes and persistent cinematic rules'
               }
             },
-            required: ['notes']
+            required: ['session_id', 'notes']
           }
         },
         {
           name: 'reroll_node',
           description:
-            'Targeted Re-Roll: Modifies ONLY an isolated node (scene or shot ID) in nogyaan-state.json based on specific user feedback, completely rewriting the node from scratch without bracketed notes.',
+            'Targeted Re-Roll: Modifies ONLY an isolated node (scene or shot ID) in the session state. CRITICAL: When rerolling, you must COMPLETELY REWRITE the node from scratch to naturally weave in the user\'s new instructions. NEVER append bracketed notes like [Direction: ...]. Ensure old, contradictory physical facts are completely erased from the new text.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               node_id: {
                 type: 'string',
                 description: 'Target node identifier (scene_id like "SCENE_01", shot_id like "SHOT_01", or "SCENE_01:SHOT_01")'
@@ -404,16 +635,20 @@ export function registerMcpTools(
                 description: 'Targeted directorial refinement feedback'
               }
             },
-            required: ['node_id', 'user_feedback']
+            required: ['session_id']
           }
         },
         {
           name: 'reroll_shot',
           description:
-            'Targeted Shot Re-Roll: Completely rewrites the sota_payload and visual_intent of an isolated shot from scratch incorporating user instructions, without bracketed notes and without modifying untouched shots.',
+            'Targeted Shot Re-Roll: CRITICAL: When rerolling, you must COMPLETELY REWRITE the sota_payload and visual_intent from scratch to naturally weave in the user\'s new instructions. NEVER append bracketed notes like [Direction: ...]. Ensure old, contradictory physical facts are completely erased from the new text.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               scene_id: {
                 type: 'string',
                 description: 'Scene identifier (e.g., "SCENE_01")'
@@ -435,25 +670,35 @@ export function registerMcpTools(
                 description: 'Alternative parameter for user direction'
               }
             },
-            required: []
+            required: ['session_id']
           }
         },
         {
           name: 'get_nogyaan_state',
           description:
-            'Returns the full current nogyaan-state.json state machine (global_medium, assets, and scenes with locked scripts and shots).',
+            'Returns the full current state machine for the specified session strictly loaded from .nogyaan/sessions/${session_id}.json.',
           inputSchema: {
             type: 'object',
-            properties: {}
+            properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              }
+            },
+            required: ['session_id']
           }
         },
         {
           name: 'update_asset_bible',
           description:
-            'Updates characters, backgrounds, hero product, and global_medium in nogyaan-state.json.',
+            'Updates characters, backgrounds, hero product, and global_medium in the isolated session state.',
           inputSchema: {
             type: 'object',
             properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
               characters: {
                 type: 'object',
                 description: 'Map of character ID to description (e.g. {"CHAR_01": "Sharma ji, 50s..."})'
@@ -473,9 +718,10 @@ export function registerMcpTools(
               },
               global_director_notes: {
                 type: 'string',
-                description: 'Persistent cinematic rules applying across all scenes (e.g., "Scene 4 must visually mirror Scene 1")'
+                description: 'Persistent cinematic rules applying across all scenes'
               }
-            }
+            },
+            required: ['session_id']
           }
         }
       ]
@@ -500,8 +746,34 @@ export function registerMcpTools(
         };
       }
 
+      // Strict session_id validation on all workflow tools
+      const rawSessionId = input.session_id;
+      if (!rawSessionId || typeof rawSessionId !== 'string' || !rawSessionId.trim()) {
+        throw new Error(`session_id is required for tool "${name}".`);
+      }
+      const sessionId = rawSessionId.trim();
+
+      // Unless initializing a brand-new session, verify the session file exists
+      if (name !== 'init_brief') {
+        const isInjectedTestSession = Boolean(
+          stateManagerInput &&
+          (stateManagerInput.getSessionId() === sessionId || stateManagerInput.getState().project_id === sessionId)
+        );
+        if (!isInjectedTestSession) {
+          const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+          if (!fs.existsSync(sessionPath)) {
+            throw new Error(
+              `Session not found: "${sessionId}". Expected file at ${sessionPath}. Run init_brief first.`
+            );
+          }
+        }
+      }
+
+      const currentSm = getSessionStateManager(sessionId);
+
       if (name === 'init_brief') {
-        const presetId = input.preset || input.preset_id || 'indian-d2c-story';
+        const validated = initBriefSchema.parse(input);
+        const presetId = validated.preset || validated.preset_id || 'indian-d2c-story';
         const preset = presetRegistry.getPresetById(presetId);
         if (!preset) {
           throw new Error(
@@ -510,12 +782,19 @@ export function registerMcpTools(
         }
 
         const session = sessionService.createSession({
-          company: input.company,
-          product: input.product,
-          goal: input.goal,
+          sessionId,
+          company: validated.company,
+          product: validated.product,
+          goal: validated.goal,
           presetId,
-          brandFriction: input.brandFriction,
-          options: input.initialOptions
+          brandFriction: validated.brandFriction,
+          options: validated.initialOptions
+        });
+
+        // Initialize state manager state for this session
+        currentSm.initProject({
+          project_id: session.sessionId,
+          core_premise: `${session.company} - ${session.product}: ${session.goal}`
         });
 
         const lockedBrief =
@@ -557,13 +836,16 @@ export function registerMcpTools(
       }
 
       if (name === 'lock_core_theme') {
+        const validated = lockCoreThemeSchema.parse(input);
         const result = sessionService.lockCoreTheme({
-          sessionId: input.session_id,
-          chosenThemeId: input.chosen_theme_id,
-          themeTitle: input.theme_title,
-          themePremise: input.theme_premise,
-          nextOptions: input.nextOptions
+          sessionId,
+          chosenThemeId: validated.chosen_theme_id,
+          themeTitle: validated.theme_title,
+          themePremise: validated.theme_premise,
+          nextOptions: validated.nextOptions
         });
+
+        currentSm.setCorePremise(validated.theme_premise);
 
         const systemMsg =
           '[SYSTEM: Core theme locked. Propose 3 opening scenarios for Scene 1. Ask the user to reply ONLY with "1", "2", or "3" (or "R" to regenerate). Keep your response under 2 sentences.]';
@@ -579,36 +861,48 @@ export function registerMcpTools(
       }
 
       if (name === 'branch_scene') {
-        const activeSession = sessionService.loadSession(input.session_id);
+        const validated = branchSceneSchema.parse(input);
+        const activeSession = sessionService.loadSession(sessionId);
         const preset = activeSession ? presetRegistry.getPresetById(activeSession.presetId) : undefined;
         const languageRule = preset?.dialogueLanguageRule || 'Strictly adhere to preset language rules.';
 
-        const chosenOptionId = input.chosen_option_id || input.selectedOptionId;
+        const chosenOptionId = validated.chosen_option_id || validated.selectedOptionId;
         const chosenNarrativeSummary =
-          input.chosen_narrative_summary ||
-          input.treatmentProse ||
-          input.description ||
-          input.title;
+          validated.chosen_narrative_summary ||
+          validated.treatmentProse ||
+          validated.description ||
+          validated.title;
 
         const branchResult = sessionService.branchScene({
-          sessionId: input.session_id,
-          action: input.action,
-          sceneNumber: input.scene_number,
+          sessionId,
+          action: validated.action,
+          sceneNumber: validated.scene_number,
           chosenOptionId,
           chosenNarrativeSummary,
-          title: input.title,
-          description: input.description,
-          treatmentProse: input.treatmentProse,
-          exitFrameAnchor: input.exit_frame_anchor,
-          nextOptions: input.nextOptions,
-          pruningConfirmation: input.pruning_confirmation,
+          title: validated.title,
+          description: validated.description,
+          treatmentProse: validated.treatmentProse,
+          exitFrameAnchor: validated.exit_frame_anchor,
+          nextOptions: validated.nextOptions,
+          pruningConfirmation: validated.pruning_confirmation,
           presetLanguageRule: languageRule
         });
+
+        // Mirror committed scene into session state manager
+        if (validated.action === 'commit' && chosenNarrativeSummary) {
+          const scNum = validated.scene_number || branchResult.session.lockedNodes.length;
+          const sceneId = `SCENE_0${scNum}`;
+          currentSm.lockScript(sceneId, {
+            id: chosenOptionId || '1',
+            style: 'Heartfelt',
+            txt: chosenNarrativeSummary
+          });
+        }
 
         const isComplete = branchResult.session.stage === 'LOCK_ASSETS';
         const systemMsg = isComplete
           ? '[SYSTEM: Scene 4 Climax locked. Call "extract_active_assets" to extract visual assets and tag scenes. Tell the user to type "N" to begin shot visual concepts. Keep your response under 2 sentences.]'
-          : `[SYSTEM: Scene ${input.scene_number || 1} locked. Propose 3 options for the next beat. Ask the user to reply ONLY with "1", "2", or "3" (or "R" to regenerate). Keep your response under 2 sentences.]`;
+          : `[SYSTEM: Scene ${validated.scene_number || 1} locked. Propose 3 options for the next beat. Ask the user to reply ONLY with "1", "2", or "3" (or "R" to regenerate). Keep your response under 2 sentences.]`;
 
         const outputData = {
           success: true,
@@ -634,16 +928,57 @@ export function registerMcpTools(
       }
 
       if (name === 'lock_assets') {
-        const activeSession = sessionService.loadSession(input.session_id);
+        const validated = lockAssetsSchema.parse(input);
+        const activeSession = sessionService.loadSession(sessionId);
         const preset = activeSession ? presetRegistry.getPresetById(activeSession.presetId) : undefined;
         const languageRule = preset?.dialogueLanguageRule || 'Strictly adhere to preset language rules.';
 
+        const chars = validated.characters || (validated as any).assets?.characters || [];
+        const envs = validated.environments || (validated as any).backgrounds || (validated as any).assets?.environments || (validated as any).assets?.backgrounds || [];
+        const prod = validated.product || (validated as any).products || (validated as any).assets?.product || (validated as any).assets?.products;
+
         const result = sessionService.lockAssets({
-          sessionId: input.session_id,
-          characters: input.characters,
-          environments: input.environments,
-          product: input.product,
+          sessionId,
+          characters: chars,
+          environments: envs,
+          product: prod,
           presetLanguageRule: languageRule
+        });
+
+        // Sync into session state manager
+        const charMap: Record<string, string> = {};
+        if (Array.isArray(chars)) {
+          for (const c of chars) {
+            charMap[c.id || c.assetId] = c.appearancePrompt || c.description || c.name || '';
+          }
+        } else if (typeof chars === 'object' && chars !== null) {
+          for (const [k, v] of Object.entries(chars)) {
+            charMap[k] = typeof v === 'string' ? v : (v as any).appearancePrompt || (v as any).description || (v as any).name || '';
+          }
+        }
+
+        const bgMap: Record<string, string> = {};
+        if (Array.isArray(envs)) {
+          for (const b of envs) {
+            bgMap[b.id || b.assetId] = b.environmentPrompt || b.description || b.name || '';
+          }
+        } else if (typeof envs === 'object' && envs !== null) {
+          for (const [k, v] of Object.entries(envs)) {
+            bgMap[k] = typeof v === 'string' ? v : (v as any).environmentPrompt || (v as any).description || (v as any).name || '';
+          }
+        }
+
+        let prodDesc = '';
+        if (typeof prod === 'string') {
+          prodDesc = prod;
+        } else if (prod) {
+          prodDesc = prod.packagingAppearance || prod.description || prod.productPrompt || prod.name || '';
+        }
+
+        currentSm.updateAssetBible({
+          characters: charMap,
+          backgrounds: bgMap,
+          product: prodDesc
         });
 
         const systemMsg =
@@ -665,13 +1000,16 @@ export function registerMcpTools(
       }
 
       if (name === 'pitch_script_options') {
-        const options = await writersRoom.pitchScriptOptions({
-          scene_id: input.scene_id,
-          user_guidance: input.user_guidance
+        const validated = pitchScriptOptionsSchema.parse(input);
+        const wr = new WritersRoomService(currentSm);
+        const options = await wr.pitchScriptOptions({
+          scene_id: validated.scene_id,
+          user_guidance: validated.user_guidance,
+          options: (validated as any).options || (validated as any).pitches
         });
 
         const systemMsg =
-          `[SYSTEM: Script pitched for ${input.scene_id}. Ask the user to reply ONLY with "1", "2", or "3" to select their script (or "R" to regenerate). Keep your response under 2 sentences.]`;
+          `[SYSTEM: Script pitched for ${validated.scene_id}. Ask the user to reply ONLY with "1", "2", or "3" to select their script (or "R" to regenerate). Keep your response under 2 sentences.]`;
 
         return {
           content: [
@@ -680,7 +1018,7 @@ export function registerMcpTools(
               text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   success: true,
-                  scene_id: input.scene_id,
+                  scene_id: validated.scene_id,
                   pitches: options,
                   system_instruction: systemMsg,
                   _systemDirective: {
@@ -697,10 +1035,18 @@ export function registerMcpTools(
       }
 
       if (name === 'lock_script_option') {
-        let scriptToLock = input.script || input.pitch;
-        if (!scriptToLock && (input.option_id || input.id)) {
-          const searchId = input.option_id || input.id;
-          const existingScene = stateManager.getScene(input.scene_id);
+        const validated = lockScriptOptionSchema.parse(input);
+        let scriptToLock = validated.script || validated.pitch;
+        if (!scriptToLock && ((validated as any).txt || (validated as any).narrative_block)) {
+          scriptToLock = {
+            id: validated.option_id || validated.id || 'A',
+            style: (validated as any).style || 'Heartfelt',
+            txt: (validated as any).txt || (validated as any).narrative_block
+          };
+        }
+        if (!scriptToLock && (validated.option_id || validated.id)) {
+          const searchId = validated.option_id || validated.id;
+          const existingScene = currentSm.getScene(validated.scene_id);
           const lScript: any = existingScene?.locked_script;
           if (existingScene && lScript && (lScript.option_id === searchId || lScript.id === searchId)) {
             scriptToLock = existingScene.locked_script;
@@ -709,12 +1055,12 @@ export function registerMcpTools(
         if (!scriptToLock) {
           throw new Error('Script object is required to lock script option.');
         }
-        const updatedState = stateManager.lockScript(input.scene_id, scriptToLock);
+        const updatedState = currentSm.lockScript(validated.scene_id, scriptToLock);
 
         const allLocked = updatedState.scenes.length >= 4 && updatedState.scenes.every((s) => s.locked_script);
         const systemMsg = allLocked
           ? '[SYSTEM: All 4 scenes locked! Call "extract_active_assets" to tag scene-level assets. Tell user to type "N" to proceed. Keep your response under 2 sentences.]'
-          : `[SYSTEM: Script option locked for ${input.scene_id}. Ask the user to type "N" for Next Scene or "S" to review the treatment. Keep your response under 2 sentences.]`;
+          : `[SYSTEM: Script option locked for ${validated.scene_id}. Ask the user to type "N" for Next Scene or "S" to review the treatment. Keep your response under 2 sentences.]`;
 
         return {
           content: [
@@ -723,8 +1069,8 @@ export function registerMcpTools(
               text: `${systemMsg}\n\n${JSON.stringify(
                 {
                   success: true,
-                  message: `Script option locked for ${input.scene_id}.`,
-                  scene_id: input.scene_id,
+                  message: `Script option locked for ${validated.scene_id}.`,
+                  scene_id: validated.scene_id,
                   locked_script: scriptToLock,
                   state: updatedState,
                   system_instruction: systemMsg,
@@ -741,7 +1087,14 @@ export function registerMcpTools(
       }
 
       if (name === 'extract_active_assets') {
-        const result = await assetLocker.extractActiveAssets();
+        const validated = extractActiveAssetsSchema.parse(input);
+        const al = new AssetLockerService(currentSm);
+        const result = await al.extractActiveAssets({
+          scene_id: (validated as any).scene_id,
+          assets: (validated as any).assets || (validated as any).extraction,
+          extraction: (validated as any).extraction,
+          scene_tagging: (validated as any).scene_tagging
+        });
         const systemMsg =
           '[SYSTEM: Assets locked and tagged across all scenes. Call "pitch_shot_concepts" for Scene 1 Shot 1. Ask the user to type "N" to begin shot visual concepts. Keep your response under 2 sentences.]';
 
@@ -768,16 +1121,15 @@ export function registerMcpTools(
         };
       }
 
-      // ======================================================================
-      // Tool A: pitch_shot_concepts (Deferred Payload Generation)
-      // Generates 3 human-readable visual intent paragraphs (1, 2, 3).
-      // Zero technical camera data. Halts and yields for user selection.
-      // ======================================================================
       if (name === 'pitch_shot_concepts') {
-        const result = await dpPitch.pitchShotConcepts({
-          scene_id: input.scene_id,
-          shot_id: input.shot_id,
-          spatial_memory: input.spatial_memory
+        const validated = pitchShotConceptsSchema.parse(input);
+        const dp = new DpPitchService(currentSm);
+        const result = await dp.pitchShotConcepts({
+          scene_id: validated.scene_id,
+          shot_id: validated.shot_id,
+          spatial_memory: validated.spatial_memory,
+          concepts: (validated as any).concepts || (validated as any).options,
+          options: (validated as any).options
         });
 
         const systemMsg =
@@ -809,29 +1161,28 @@ export function registerMcpTools(
         };
       }
 
-      // ======================================================================
-      // Tool B: compile_sota_prompt (SOTA Video Physics & Ingress/Egress)
-      // Single-vector camera, spatial anchoring, posture & eyeline, and temporal handshake.
-      // Saves directly to local JSON state.
-      // Detects workflow completion on the final shot of the final scene (e.g., Scene 4, Shot 3).
-      // ======================================================================
       if (name === 'compile_sota_prompt') {
-        const result = await dpPitch.compileSotaPrompt({
-          scene_id: input.scene_id,
-          shot_id: input.shot_id,
-          selected_option: input.selected_option || input.option || '1',
-          spatial_memory: input.spatial_memory,
-          last_shot_egress: input.last_shot_egress
+        const validated = compileSotaPromptSchema.parse(input);
+        const dp = new DpPitchService(currentSm);
+        const result = await dp.compileSotaPrompt({
+          scene_id: validated.scene_id,
+          shot_id: validated.shot_id,
+          selected_option: validated.selected_option || validated.option || '1',
+          spatial_memory: validated.spatial_memory,
+          last_shot_egress: validated.last_shot_egress,
+          sota_payload: (validated as any).sota_payload,
+          visual_intent: (validated as any).visual_intent,
+          egress: (validated as any).egress,
+          spatial_facts: (validated as any).spatial_facts
         });
 
-        const currentState = stateManager.getState();
+        const currentState = currentSm.getState();
         const scenes = currentState.scenes || [];
-        const resolvedSceneId = result.scene_id || input.scene_id;
-        const resolvedShotId = result.shot_id || input.shot_id || 'SHOT_01';
+        const resolvedSceneId = result.scene_id || validated.scene_id;
+        const resolvedShotId = result.shot_id || validated.shot_id || 'SHOT_01';
         const currentScene = scenes.find((s) => s.scene_id.toLowerCase() === resolvedSceneId.toLowerCase());
         const shotCount = currentScene ? Object.keys(currentScene.shots || {}).length : 0;
 
-        // Detect workflow completion: final shot of the final scene (e.g. Scene 4, Shot 3)
         const isScene4 =
           /scene[_-]?0?4\b/i.test(resolvedSceneId) ||
           resolvedSceneId.toLowerCase().includes('climax') ||
@@ -840,7 +1191,7 @@ export function registerMcpTools(
           scenes.length > 0 &&
           (scenes[scenes.length - 1].scene_id.toLowerCase() === resolvedSceneId.toLowerCase() ||
             scenes.findIndex((s) => s.scene_id.toLowerCase() === resolvedSceneId.toLowerCase()) === scenes.length - 1);
-        const isFinalScene = isScene4 || (scenes.length >= 4 && isLastScene) || input.is_final_scene === true;
+        const isFinalScene = isScene4 || (scenes.length >= 4 && isLastScene) || validated.is_final_scene === true;
 
         const isShot3OrHigher =
           /shot[_-]?0?[3-9]\b/i.test(resolvedShotId) ||
@@ -850,8 +1201,8 @@ export function registerMcpTools(
         const isFinalShot =
           isShot3OrHigher ||
           shotCount >= 3 ||
-          input.is_final_shot === true ||
-          input.final_shot === true;
+          validated.is_final_shot === true ||
+          validated.final_shot === true;
 
         const isWorkflowComplete = (isFinalScene && isFinalShot) || result.workflow_complete === true;
 
@@ -894,10 +1245,13 @@ export function registerMcpTools(
       }
 
       if (name === 'pitch_shot_options') {
-        // Backward-compatible wrapper
-        const options = await dpPitch.pitchShotOptions({
-          scene_id: input.scene_id,
-          shot_id: input.shot_id
+        const validated = pitchShotOptionsSchema.parse(input);
+        const dp = new DpPitchService(currentSm);
+        const options = await dp.pitchShotOptions({
+          scene_id: validated.scene_id,
+          shot_id: validated.shot_id,
+          options: (validated as any).options || (validated as any).pitches,
+          pitches: (validated as any).pitches
         });
 
         const systemMsg =
@@ -911,9 +1265,9 @@ export function registerMcpTools(
                 {
                   status: 'YIELD_TO_USER',
                   action_required: 'USER_SELECTION',
-                  message: `Pitched 3 options for ${input.scene_id} ${input.shot_id || 'SHOT_01'}. Execution halted. Waiting for user to select 1 option before proceeding.`,
-                  scene_id: input.scene_id,
-                  shot_id: input.shot_id || 'SHOT_01',
+                  message: `Pitched 3 options for ${validated.scene_id} ${validated.shot_id || 'SHOT_01'}. Execution halted. Waiting for user to select 1 option before proceeding.`,
+                  scene_id: validated.scene_id,
+                  shot_id: validated.shot_id || 'SHOT_01',
                   pitches: options,
                   options: options,
                   system_instruction: systemMsg,
@@ -934,43 +1288,44 @@ export function registerMcpTools(
       }
 
       if (name === 'lock_shot_option') {
-        const shotToLock = input.shot || input.pitch;
+        const validated = lockShotOptionSchema.parse(input);
+        const shotToLock = validated.shot || validated.pitch;
         if (!shotToLock) {
           throw new Error('Shot object is required to lock shot option.');
         }
-        const spatialFacts = input.spatial_facts || input.spatial_memory_updates;
-        const updatedState = stateManager.lockShot(
-          input.scene_id,
-          input.shot_id,
+        const spatialFacts = validated.spatial_facts || validated.spatial_memory_updates;
+        const updatedState = currentSm.lockShot(
+          validated.scene_id,
+          validated.shot_id,
           shotToLock,
           spatialFacts
         );
 
-        const currentState = stateManager.getState();
+        const currentState = currentSm.getState();
         const scenes = currentState.scenes || [];
-        const currentScene = scenes.find((s) => s.scene_id.toLowerCase() === input.scene_id.toLowerCase());
+        const currentScene = scenes.find((s) => s.scene_id.toLowerCase() === validated.scene_id.toLowerCase());
         const shotCount = currentScene ? Object.keys(currentScene.shots || {}).length : 0;
 
         const isScene4 =
-          /scene[_-]?0?4\b/i.test(input.scene_id) ||
-          input.scene_id.toLowerCase().includes('climax') ||
-          input.scene_id.toLowerCase().includes('scene_4');
+          /scene[_-]?0?4\b/i.test(validated.scene_id) ||
+          validated.scene_id.toLowerCase().includes('climax') ||
+          validated.scene_id.toLowerCase().includes('scene_4');
         const isLastScene =
           scenes.length > 0 &&
-          (input.scene_id.toLowerCase() === scenes[scenes.length - 1].scene_id.toLowerCase() ||
-            scenes.findIndex((s) => s.scene_id.toLowerCase() === input.scene_id.toLowerCase()) === scenes.length - 1);
-        const isFinalScene = isScene4 || (scenes.length >= 4 && isLastScene) || input.is_final_scene === true;
+          (validated.scene_id.toLowerCase() === scenes[scenes.length - 1].scene_id.toLowerCase() ||
+            scenes.findIndex((s) => s.scene_id.toLowerCase() === validated.scene_id.toLowerCase()) === scenes.length - 1);
+        const isFinalScene = isScene4 || (scenes.length >= 4 && isLastScene) || validated.is_final_scene === true;
 
         const isShot3OrHigher =
-          /shot[_-]?0?[3-9]\b/i.test(input.shot_id) ||
-          input.shot_id.toLowerCase().includes('shot_3') ||
-          input.shot_id.toLowerCase().includes('shot_03') ||
-          input.shot_id.toLowerCase().includes('final');
+          /shot[_-]?0?[3-9]\b/i.test(validated.shot_id) ||
+          validated.shot_id.toLowerCase().includes('shot_3') ||
+          validated.shot_id.toLowerCase().includes('shot_03') ||
+          validated.shot_id.toLowerCase().includes('final');
         const isFinalShot =
           isShot3OrHigher ||
           shotCount >= 3 ||
-          input.is_final_shot === true ||
-          input.final_shot === true;
+          validated.is_final_shot === true ||
+          validated.final_shot === true;
 
         const isWorkflowComplete = isFinalScene && isFinalShot;
 
@@ -990,15 +1345,15 @@ export function registerMcpTools(
                 {
                   success: true,
                   message: isWorkflowComplete
-                    ? `Final shot option locked for ${input.scene_id} -> ${input.shot_id}. Storyboard workflow complete!`
-                    : `Shot option locked for ${input.scene_id} -> ${input.shot_id}. Spatial memory silently updated.`,
+                    ? `Final shot option locked for ${validated.scene_id} -> ${validated.shot_id}. Storyboard workflow complete!`
+                    : `Shot option locked for ${validated.scene_id} -> ${validated.shot_id}. Spatial memory silently updated.`,
                   workflow_complete: isWorkflowComplete,
                   studio_url: 'http://localhost:4321',
-                  scene_id: input.scene_id,
-                  shot_id: input.shot_id,
+                  scene_id: validated.scene_id,
+                  shot_id: validated.shot_id,
                   locked_shot: shotToLock,
-                  spatial_memory: updatedState.scenes.find((s) => s.scene_id === input.scene_id)?.spatial_memory || [],
-                  last_shot_egress: updatedState.scenes.find((s) => s.scene_id === input.scene_id)?.last_shot_egress || '',
+                  spatial_memory: updatedState.scenes.find((s) => s.scene_id === validated.scene_id)?.spatial_memory || [],
+                  last_shot_egress: updatedState.scenes.find((s) => s.scene_id === validated.scene_id)?.last_shot_egress || '',
                   system_instruction: systemMsg,
                   state: updatedState
                 },
@@ -1011,7 +1366,8 @@ export function registerMcpTools(
       }
 
       if (name === 'set_director_notes') {
-        const updatedState = stateManager.setGlobalDirectorNotes(input.notes);
+        const validated = setDirectorNotesSchema.parse(input);
+        const updatedState = currentSm.setGlobalDirectorNotes(validated.notes);
         return {
           content: [
             {
@@ -1032,21 +1388,30 @@ export function registerMcpTools(
       }
 
       if (name === 'reroll_node' || name === 'reroll_shot') {
+        const validated = name === 'reroll_node' ? rerollNodeSchema.parse(input) : rerollShotSchema.parse(input);
         const targetNodeId =
-          input.node_id ||
-          (input.scene_id && input.shot_id ? `${input.scene_id}:${input.shot_id}` : input.shot_id || input.scene_id);
-        const feedback = input.user_feedback || input.direction || input.notes;
+          validated.node_id ||
+          (validated.scene_id && validated.shot_id ? `${validated.scene_id}:${validated.shot_id}` : validated.shot_id || validated.scene_id);
+        const feedback = validated.user_feedback || validated.direction || validated.notes || '';
 
         if (!targetNodeId) {
           throw new Error('Target node identifier (node_id or scene_id/shot_id) is required for re-roll.');
         }
-        if (!feedback) {
-          throw new Error('user_feedback or direction string is required for re-roll.');
+        if (!feedback && !(validated as any).sota_payload && !(validated as any).visual_intent && !(validated as any).txt) {
+          throw new Error('user_feedback, direction, or replacement content is required for re-roll.');
         }
 
-        const result = await rerollService.rerollNode({
+        const rr = new RerollService(currentSm);
+        const result = await rr.rerollNode({
           node_id: targetNodeId,
-          user_feedback: feedback
+          user_feedback: feedback,
+          direction: validated.direction,
+          notes: validated.notes,
+          sota_payload: (validated as any).sota_payload,
+          visual_intent: (validated as any).visual_intent,
+          txt: (validated as any).txt,
+          prmpt: (validated as any).prmpt,
+          style: (validated as any).style
         });
 
         const systemMsg =
@@ -1072,7 +1437,8 @@ export function registerMcpTools(
       }
 
       if (name === 'get_nogyaan_state') {
-        const state = stateManager.getState();
+        getNogyaanStateSchema.parse(input);
+        const state = currentSm.getState();
         return {
           content: [
             {
@@ -1084,18 +1450,19 @@ export function registerMcpTools(
       }
 
       if (name === 'update_asset_bible') {
-        const currentState = stateManager.getState();
+        const validated = updateAssetBibleSchema.parse(input);
+        const currentState = currentSm.getState();
         const updatedAssets = {
-          characters: input.characters !== undefined ? input.characters : currentState.assets.characters,
-          backgrounds: input.backgrounds !== undefined ? input.backgrounds : currentState.assets.backgrounds,
-          product: input.product !== undefined ? input.product : currentState.assets.product
+          characters: validated.characters !== undefined ? validated.characters : currentState.assets.characters,
+          backgrounds: validated.backgrounds !== undefined ? validated.backgrounds : currentState.assets.backgrounds,
+          product: validated.product !== undefined ? validated.product : currentState.assets.product
         };
-        stateManager.updateAssetBible(updatedAssets);
-        if (input.global_medium) {
-          stateManager.updateGlobalMedium(input.global_medium as Medium);
+        currentSm.updateAssetBible(updatedAssets);
+        if (validated.global_medium) {
+          currentSm.updateGlobalMedium(validated.global_medium as Medium);
         }
-        if (input.global_director_notes !== undefined) {
-          stateManager.setGlobalDirectorNotes(input.global_director_notes);
+        if (validated.global_director_notes !== undefined) {
+          currentSm.setGlobalDirectorNotes(validated.global_director_notes);
         }
         return {
           content: [
@@ -1105,7 +1472,7 @@ export function registerMcpTools(
                 {
                   success: true,
                   message: 'AssetBible, Medium & Director Notes updated.',
-                  state: stateManager.getState()
+                  state: currentSm.getState()
                 },
                 null,
                 2

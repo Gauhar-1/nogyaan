@@ -96,7 +96,7 @@ export async function executeCompileShots(
   const validated = compileShotsSchema.parse(input);
 
   // FSM Stage Lock Check: Can only be called after LOCK_ASSETS
-  const currentGraph = store.load();
+  const currentGraph = store.load(validated.session_id);
   if (currentGraph.currentStage !== 'COMPILE_SHOTS') {
     throw new Error(
       `FSM STAGE VIOLATION: Cannot call compile_shots while in stage '${currentGraph.currentStage}'. compile_shots can only be called after LOCK_ASSETS (expected stage: 'COMPILE_SHOTS').`
@@ -165,7 +165,7 @@ export async function executeCompileShots(
   });
 
   // Store executes referential integrity check and server-side auto-compilation
-  const updatedGraph = store.compileShots(rawShots);
+  const updatedGraph = store.compileShots(rawShots, validated.session_id);
 
   // Also compile reference-tagged kinetic video prompts via PromptCompilerService
   const modernCompiledShots = validated.shots.map((s, idx) => {

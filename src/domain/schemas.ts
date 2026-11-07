@@ -187,14 +187,22 @@ export const SessionStateSchema = z.object({
   stage: z.enum(FSM_STAGES),
   coreTheme: CoreThemeSchema.optional(),
   lockedNodes: z.array(StoryNodeSchema).default([]),
-  scenes: z.array(StoryNodeSchema).default([]),
+  scenes: z.union([z.array(StoryNodeSchema), z.array(z.any())]).default([]),
   prunedCount: z.number().int().min(0).default(0),
   pendingOptions: z.array(NarrativeOptionSchema).default([]),
-  assets: AssetRegistrySchema.optional(),
+  assets: z.union([
+    AssetRegistrySchema,
+    z.object({
+      characters: z.record(z.string()),
+      backgrounds: z.record(z.string()),
+      product: z.string()
+    }),
+    z.record(z.string(), z.any())
+  ]).optional(),
   compiledShots: z.array(CompiledShotSchema).default([]),
   directorsCut: z.lazy(() => DirectorsCutSchema).optional(),
   status: z.enum(['IN_PROGRESS', 'COMPLETED']).default('IN_PROGRESS')
-});
+}).passthrough();
 
 export type SessionState = z.infer<typeof SessionStateSchema>;
 

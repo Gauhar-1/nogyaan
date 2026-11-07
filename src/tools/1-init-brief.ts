@@ -19,6 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const initBriefSchema = z.object({
+  session_id: z.string().optional().describe('Unique project session ID'),
   company: z.string().min(1, 'Company name is required').describe('Company or brand name'),
   product: z.string().min(1, 'Product is required').describe('Specific product or service being promoted'),
   goal: z.string().min(1, 'Campaign goal is required').describe('Core business objective or conversion goal for this campaign'),
@@ -84,7 +85,8 @@ export async function executeInitBrief(
       brandFriction: friction,
       lockedBrief: lockedBriefText
     },
-    validated.initialOptions
+    validated.initialOptions,
+    validated.session_id
   );
 
   return {

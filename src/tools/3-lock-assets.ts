@@ -42,7 +42,7 @@ export async function executeLockAssets(
   const validated = lockAssetsSchema.parse(input);
 
   // FSM Stage Lock Check: Can only be called after SCENE_4_CLIMAX is locked
-  const currentGraph = store.load();
+  const currentGraph = store.load(validated.session_id);
   if (currentGraph.currentStage !== 'LOCK_ASSETS') {
     throw new Error(
       `FSM STAGE VIOLATION: Cannot call lock_assets while in stage '${currentGraph.currentStage}'. lock_assets can only be called after SCENE_4_CLIMAX is locked (expected stage: 'LOCK_ASSETS').`
@@ -106,6 +106,7 @@ export async function executeLockAssets(
     : undefined;
 
   const updatedGraph = store.lockAssets({
+    sessionId: validated.session_id,
     characters: enrichedCharacters,
     environments: enrichedEnvironments,
     product: enrichedProduct
