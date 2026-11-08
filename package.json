@@ -1,6 +1,6 @@
 {
   "name": "nogyaan",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "State-Pruned Video Director & Storyboard MCP Server with DAG story branching, studio workbench, and diffusion model prompt compilation.",
   "type": "module",
   "bin": {
