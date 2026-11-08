@@ -295,8 +295,28 @@ export class StateManager {
       ? undefined
       : validated.assets;
 
+    const allFourScenesHaveShots =
+      this.state.scenes.length >= 4 &&
+      this.state.scenes.slice(0, 4).every((s) => s.shots && Object.keys(s.shots).length > 0);
+
+    let stage = existingData.stage || existingData.currentStage || 'CORE_THEME';
+    if (allFourScenesHaveShots) {
+      stage = 'COMPLETED';
+    }
+
+    const current_stage = (stage === 'SCENE_2_CATALYST' || stage === 'SCENE_2_SETUP')
+      ? 'SCENE_2_SETUP'
+      : stage;
+
+    const sessionStatus =
+      stage === 'COMPLETED' ? 'COMPLETED' : existingData.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS';
+
     const merged: Record<string, any> = {
       ...existingData,
+      stage,
+      currentStage: stage,
+      current_stage,
+      status: sessionStatus,
       project_id: validated.project_id,
       core_premise: validated.core_premise,
       global_director_notes: validated.global_director_notes,
@@ -313,6 +333,34 @@ export class StateManager {
 
     fs.writeFileSync(this.filePath, JSON.stringify(merged, null, 2), 'utf-8');
     this.notifyListeners();
+  }
+
+  public getCurrentStage(): string {
+    const allFourScenesHaveShots =
+      this.state.scenes.length >= 4 &&
+      this.state.scenes.slice(0, 4).every((s) => s.shots && Object.keys(s.shots).length > 0);
+    if (allFourScenesHaveShots) return 'COMPLETED';
+
+    const allScenesLocked =
+      this.state.scenes.length >= 4 &&
+      this.state.scenes.slice(0, 4).every((s) => s.locked_script);
+
+    const hasAssets = Boolean(
+      this.state.assets &&
+      (Object.keys(this.state.assets.characters || {}).length > 0 || this.state.assets.product)
+    );
+
+    if (hasAssets && allScenesLocked) return 'COMPILE_SHOTS';
+    if (allScenesLocked) return 'LOCK_ASSETS';
+
+    const lockedCount = this.state.scenes.filter((s) => s.locked_script).length;
+    if (lockedCount === 0) {
+      return this.state.core_premise ? 'SCENE_1_SETUP' : 'CORE_THEME';
+    }
+    if (lockedCount === 1) return 'SCENE_2_SETUP';
+    if (lockedCount === 2) return 'SCENE_3_TWIST';
+    if (lockedCount === 3) return 'SCENE_4_CLIMAX';
+    return 'LOCK_ASSETS';
   }
 
   public getState(): NogyaanState {

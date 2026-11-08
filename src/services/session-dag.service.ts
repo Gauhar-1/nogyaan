@@ -207,9 +207,13 @@ export class SessionDagService {
     session.scenes = session.lockedNodes;
     const validated = SessionStateSchema.parse(session);
 
+    const sessionData: any = { ...validated };
+    sessionData.currentStage = validated.stage;
+    sessionData.current_stage = validated.stage === 'SCENE_2_CATALYST' ? 'SCENE_2_SETUP' : validated.stage;
+
     // Save isolated session JSON strictly to .nogyaan/sessions/${session_id}.json
     const sessionFilePath = path.join(this.getSessionsDir(), `${validated.sessionId}.json`);
-    fs.writeFileSync(sessionFilePath, JSON.stringify(validated, null, 2), 'utf-8');
+    fs.writeFileSync(sessionFilePath, JSON.stringify(sessionData, null, 2), 'utf-8');
 
     // Update latest active pointer
     try {
@@ -396,6 +400,7 @@ export class SessionDagService {
     const stageOrder: Record<FsmStage, FsmStage | null> = {
       CORE_THEME: 'SCENE_1_SETUP',
       SCENE_1_SETUP: 'SCENE_2_CATALYST',
+      SCENE_2_SETUP: 'SCENE_3_TWIST',
       SCENE_2_CATALYST: 'SCENE_3_TWIST',
       SCENE_3_TWIST: 'SCENE_4_CLIMAX',
       SCENE_4_CLIMAX: 'LOCK_ASSETS',
@@ -447,6 +452,8 @@ export class SessionDagService {
     session.scenes = session.lockedNodes;
     session.prunedCount += 2;
     session.stage = nextStage;
+    (session as any).currentStage = nextStage;
+    (session as any).current_stage = (nextStage === 'SCENE_2_CATALYST' || nextStage === 'SCENE_2_SETUP') ? 'SCENE_2_SETUP' : nextStage;
     session.pendingOptions = params.nextOptions || [];
 
     const languageRule =

@@ -1096,6 +1096,16 @@ export function registerMcpTools(
 
       if (name === 'pitch_script_options') {
         const validated = pitchScriptOptionsSchema.parse(input);
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+        if (fs.existsSync(sessionPath)) {
+          const activeSession = sessionService.loadSession(sessionId);
+          if (activeSession.stage === 'CORE_THEME') {
+            throw new Error(
+              "FSM STAGE VIOLATION: Cannot pitch script options during stage 'CORE_THEME'. Lock core theme first via 'lock_core_theme'."
+            );
+          }
+        }
+
         const wr = new WritersRoomService(currentSm);
         const options = await wr.pitchScriptOptions({
           scene_id: validated.scene_id,
@@ -1131,6 +1141,16 @@ export function registerMcpTools(
 
       if (name === 'lock_script_option') {
         const validated = lockScriptOptionSchema.parse(input);
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+        if (fs.existsSync(sessionPath)) {
+          const activeSession = sessionService.loadSession(sessionId);
+          if (activeSession.stage === 'CORE_THEME') {
+            throw new Error(
+              "FSM STAGE VIOLATION: Cannot lock script option during stage 'CORE_THEME'. Lock core theme first via 'lock_core_theme'."
+            );
+          }
+        }
+
         let scriptToLock = validated.script || validated.pitch;
         if (!scriptToLock && ((validated as any).txt || (validated as any).narrative_block)) {
           scriptToLock = {
@@ -1152,6 +1172,33 @@ export function registerMcpTools(
         }
         const updatedState = currentSm.lockScript(validated.scene_id, scriptToLock);
 
+        let currentStageName = 'SCENE_1_SETUP';
+        if (fs.existsSync(sessionPath)) {
+          try {
+            const activeSession = sessionService.loadSession(sessionId);
+            const scNum = parseInt(validated.scene_id.replace(/\D/g, ''), 10) || 1;
+            if (scNum === 1 && (activeSession.stage === 'SCENE_1_SETUP' || activeSession.stage === 'CORE_THEME')) {
+              activeSession.stage = 'SCENE_2_CATALYST';
+              (activeSession as any).currentStage = 'SCENE_2_CATALYST';
+              (activeSession as any).current_stage = 'SCENE_2_SETUP';
+            } else if (scNum === 2 && (activeSession.stage === 'SCENE_2_CATALYST' || (activeSession.stage as string) === 'SCENE_2_SETUP')) {
+              activeSession.stage = 'SCENE_3_TWIST';
+              (activeSession as any).currentStage = 'SCENE_3_TWIST';
+              (activeSession as any).current_stage = 'SCENE_3_TWIST';
+            } else if (scNum === 3 && activeSession.stage === 'SCENE_3_TWIST') {
+              activeSession.stage = 'SCENE_4_CLIMAX';
+              (activeSession as any).currentStage = 'SCENE_4_CLIMAX';
+              (activeSession as any).current_stage = 'SCENE_4_CLIMAX';
+            } else if (scNum >= 4 && activeSession.stage === 'SCENE_4_CLIMAX') {
+              activeSession.stage = 'LOCK_ASSETS';
+              (activeSession as any).currentStage = 'LOCK_ASSETS';
+              (activeSession as any).current_stage = 'LOCK_ASSETS';
+            }
+            sessionService.saveSession(activeSession);
+            currentStageName = activeSession.stage;
+          } catch {}
+        }
+
         const allLocked = updatedState.scenes.length >= 4 && updatedState.scenes.every((s) => s.locked_script);
         const systemMsg = allLocked
           ? '[SYSTEM: All 4 scenes locked! Call "extract_active_assets" to tag scene-level assets. Tell user to type "N" to proceed. Keep your response under 2 sentences.]'
@@ -1166,6 +1213,9 @@ export function registerMcpTools(
                   success: true,
                   message: `Script option locked for ${validated.scene_id}.`,
                   scene_id: validated.scene_id,
+                  currentStage: currentStageName,
+                  current_stage: currentStageName === 'SCENE_2_CATALYST' ? 'SCENE_2_SETUP' : currentStageName,
+                  stage: currentStageName,
                   locked_script: scriptToLock,
                   state: updatedState,
                   system_instruction: systemMsg,
@@ -1183,6 +1233,19 @@ export function registerMcpTools(
 
       if (name === 'extract_active_assets') {
         const validated = extractActiveAssetsSchema.parse(input);
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+        if (fs.existsSync(sessionPath)) {
+          const activeSession = sessionService.loadSession(sessionId);
+          const allowedStages = ['LOCK_ASSETS', 'COMPILE_SHOTS', 'COMPLETED'];
+          const scenes = currentSm.getState().scenes || [];
+          const allScenesLocked = scenes.length >= 4 && scenes.every((s) => s.locked_script);
+          if (!allowedStages.includes(activeSession.stage) && !allScenesLocked) {
+            throw new Error(
+              `FSM STAGE VIOLATION: Cannot call extract_active_assets while in stage '${activeSession.stage}'. All 4 scenes must be locked first (expected stage: 'LOCK_ASSETS').`
+            );
+          }
+        }
+
         const al = new AssetLockerService(currentSm);
         const result = await al.extractActiveAssets({
           scene_id: (validated as any).scene_id,
@@ -1192,6 +1255,19 @@ export function registerMcpTools(
           extraction: (validated as any).extraction,
           scene_tagging: (validated as any).scene_tagging
         });
+
+        if (fs.existsSync(sessionPath)) {
+          try {
+            const activeSession = sessionService.loadSession(sessionId);
+            if (activeSession.stage === 'LOCK_ASSETS') {
+              activeSession.stage = 'COMPILE_SHOTS';
+              (activeSession as any).currentStage = 'COMPILE_SHOTS';
+              (activeSession as any).current_stage = 'COMPILE_SHOTS';
+              sessionService.saveSession(activeSession);
+            }
+          } catch {}
+        }
+
         const systemMsg =
           '[SYSTEM: Assets locked and tagged across all scenes. Call "pitch_shot_concepts" for Scene 1 Shot 1. Ask the user to type "N" to begin shot visual concepts. Keep your response under 2 sentences.]';
 
@@ -1204,6 +1280,9 @@ export function registerMcpTools(
                   success: true,
                   message: 'Asset Bible extracted and active_refs tagged for all scenes.',
                   extraction: result.extraction,
+                  currentStage: 'COMPILE_SHOTS',
+                  current_stage: 'COMPILE_SHOTS',
+                  stage: 'COMPILE_SHOTS',
                   state: result.state,
                   system_instruction: systemMsg,
                   _systemDirective: {
@@ -1264,6 +1343,19 @@ export function registerMcpTools(
 
       if (name === 'pitch_shot_concepts') {
         const validated = pitchShotConceptsSchema.parse(input);
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+        if (fs.existsSync(sessionPath)) {
+          const activeSession = sessionService.loadSession(sessionId);
+          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED'];
+          const state = currentSm.getState();
+          const hasAssets = Boolean(state.assets && (Object.keys(state.assets.characters || {}).length > 0 || state.assets.product));
+          if (!allowedStages.includes(activeSession.stage) && !hasAssets) {
+            throw new Error(
+              `FSM STAGE VIOLATION: Cannot call pitch_shot_concepts while in stage '${activeSession.stage}'. Assets must be locked first (expected stage: 'COMPILE_SHOTS').`
+            );
+          }
+        }
+
         const dp = new DpPitchService(currentSm);
         const result = await dp.pitchShotConcepts({
           scene_id: validated.scene_id,
@@ -1282,6 +1374,9 @@ export function registerMcpTools(
           message: `Pitched 3 visual concepts for ${result.scene_id} ${result.shot_id}. Execution halted. Waiting for user to select 1, 2, or 3.`,
           scene_id: result.scene_id,
           shot_id: result.shot_id,
+          currentStage: 'COMPILE_SHOTS',
+          current_stage: 'COMPILE_SHOTS',
+          stage: 'COMPILE_SHOTS',
           concepts: result.concepts,
           spatial_memory: result.spatial_memory,
           last_shot_egress: result.last_shot_egress,
@@ -1304,6 +1399,19 @@ export function registerMcpTools(
 
       if (name === 'compile_sota_prompt') {
         const validated = compileSotaPromptSchema.parse(input);
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+        if (fs.existsSync(sessionPath)) {
+          const activeSession = sessionService.loadSession(sessionId);
+          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED'];
+          const state = currentSm.getState();
+          const hasAssets = Boolean(state.assets && (Object.keys(state.assets.characters || {}).length > 0 || state.assets.product));
+          if (!allowedStages.includes(activeSession.stage) && !hasAssets) {
+            throw new Error(
+              `FSM STAGE VIOLATION: Cannot call compile_sota_prompt while in stage '${activeSession.stage}'. Assets must be locked first (expected stage: 'COMPILE_SHOTS').`
+            );
+          }
+        }
+
         const dp = new DpPitchService(currentSm);
         const result = await dp.compileSotaPrompt({
           scene_id: validated.scene_id,
@@ -1345,8 +1453,22 @@ export function registerMcpTools(
           validated.is_final_shot === true ||
           validated.final_shot === true;
 
-        const isWorkflowComplete = (isFinalScene && isFinalShot) || result.workflow_complete === true;
+        const allFourScenesHaveShots =
+          scenes.length >= 4 &&
+          scenes.slice(0, 4).every((s) => s.shots && Object.keys(s.shots).length > 0);
+        const isWorkflowComplete = (isFinalScene && isFinalShot) || result.workflow_complete === true || allFourScenesHaveShots;
         const dynamicStudioUrl = `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`;
+
+        if (isWorkflowComplete && fs.existsSync(sessionPath)) {
+          try {
+            const activeSession = sessionService.loadSession(sessionId);
+            activeSession.stage = 'COMPLETED';
+            activeSession.status = 'COMPLETED';
+            (activeSession as any).currentStage = 'COMPLETED';
+            (activeSession as any).current_stage = 'COMPLETED';
+            sessionService.saveSession(activeSession);
+          } catch {}
+        }
 
         const normalSystemMsg =
           '[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
@@ -1363,6 +1485,9 @@ export function registerMcpTools(
             : `SOTA AI prompt compiled and saved for ${result.scene_id} -> ${result.shot_id}. Temporal egress updated.`,
           workflow_complete: isWorkflowComplete,
           studio_url: dynamicStudioUrl,
+          currentStage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
+          current_stage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
+          stage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
           scene_id: result.scene_id,
           shot_id: result.shot_id,
           shot: result.shot,
@@ -1388,6 +1513,19 @@ export function registerMcpTools(
 
       if (name === 'pitch_shot_options') {
         const validated = pitchShotOptionsSchema.parse(input);
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+        if (fs.existsSync(sessionPath)) {
+          const activeSession = sessionService.loadSession(sessionId);
+          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED'];
+          const state = currentSm.getState();
+          const hasAssets = Boolean(state.assets && (Object.keys(state.assets.characters || {}).length > 0 || state.assets.product));
+          if (!allowedStages.includes(activeSession.stage) && !hasAssets) {
+            throw new Error(
+              `FSM STAGE VIOLATION: Cannot call pitch_shot_options while in stage '${activeSession.stage}'. Assets must be locked first (expected stage: 'COMPILE_SHOTS').`
+            );
+          }
+        }
+
         const dp = new DpPitchService(currentSm);
         const options = await dp.pitchShotOptions({
           scene_id: validated.scene_id,
@@ -1410,6 +1548,9 @@ export function registerMcpTools(
                   message: `Pitched 3 options for ${validated.scene_id} ${validated.shot_id || 'SHOT_01'}. Execution halted. Waiting for user to select 1 option before proceeding.`,
                   scene_id: validated.scene_id,
                   shot_id: validated.shot_id || 'SHOT_01',
+                  currentStage: 'COMPILE_SHOTS',
+                  current_stage: 'COMPILE_SHOTS',
+                  stage: 'COMPILE_SHOTS',
                   pitches: options,
                   options: options,
                   system_instruction: systemMsg,
@@ -1431,6 +1572,19 @@ export function registerMcpTools(
 
       if (name === 'lock_shot_option') {
         const validated = lockShotOptionSchema.parse(input);
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+        if (fs.existsSync(sessionPath)) {
+          const activeSession = sessionService.loadSession(sessionId);
+          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED'];
+          const state = currentSm.getState();
+          const hasAssets = Boolean(state.assets && (Object.keys(state.assets.characters || {}).length > 0 || state.assets.product));
+          if (!allowedStages.includes(activeSession.stage) && !hasAssets) {
+            throw new Error(
+              `FSM STAGE VIOLATION: Cannot call lock_shot_option while in stage '${activeSession.stage}'. Assets must be locked first (expected stage: 'COMPILE_SHOTS').`
+            );
+          }
+        }
+
         const shotToLock = validated.shot || validated.pitch;
         if (!shotToLock) {
           throw new Error('Shot object is required to lock shot option.');
@@ -1469,7 +1623,21 @@ export function registerMcpTools(
           validated.is_final_shot === true ||
           validated.final_shot === true;
 
-        const isWorkflowComplete = isFinalScene && isFinalShot;
+        const allFourScenesHaveShots =
+          scenes.length >= 4 &&
+          scenes.slice(0, 4).every((s) => s.shots && Object.keys(s.shots).length > 0);
+        const isWorkflowComplete = (isFinalScene && isFinalShot) || allFourScenesHaveShots;
+
+        if (isWorkflowComplete && fs.existsSync(sessionPath)) {
+          try {
+            const activeSession = sessionService.loadSession(sessionId);
+            activeSession.stage = 'COMPLETED';
+            activeSession.status = 'COMPLETED';
+            (activeSession as any).currentStage = 'COMPLETED';
+            (activeSession as any).current_stage = 'COMPLETED';
+            sessionService.saveSession(activeSession);
+          } catch {}
+        }
 
         const normalSystemMsg =
           '[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
@@ -1489,6 +1657,9 @@ export function registerMcpTools(
                   message: isWorkflowComplete
                     ? `Final shot option locked for ${validated.scene_id} -> ${validated.shot_id}. Storyboard workflow complete!`
                     : `Shot option locked for ${validated.scene_id} -> ${validated.shot_id}. Spatial memory silently updated.`,
+                  currentStage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
+                  current_stage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
+                  stage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
                   workflow_complete: isWorkflowComplete,
                   studio_url: `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`,
                   scene_id: validated.scene_id,
@@ -1496,8 +1667,12 @@ export function registerMcpTools(
                   locked_shot: shotToLock,
                   spatial_memory: updatedState.scenes.find((s) => s.scene_id === validated.scene_id)?.spatial_memory || [],
                   last_shot_egress: updatedState.scenes.find((s) => s.scene_id === validated.scene_id)?.last_shot_egress || '',
+                  state: updatedState,
                   system_instruction: systemMsg,
-                  state: updatedState
+                  _systemDirective: {
+                    instruction: systemMsg,
+                    workflow_complete: isWorkflowComplete
+                  }
                 },
                 null,
                 2

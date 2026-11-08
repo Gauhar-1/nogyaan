@@ -156,6 +156,7 @@ export function validateNoCameraJargon(
 export const FSM_STAGES = [
   "CORE_THEME",
   "SCENE_1_SETUP",
+  "SCENE_2_SETUP",
   "SCENE_2_CATALYST",
   "SCENE_3_TWIST",
   "SCENE_4_CLIMAX",
@@ -169,6 +170,7 @@ export type FSMStage = (typeof FSM_STAGES)[number];
 export const NARRATIVE_STAGES: readonly FSMStage[] = [
   "CORE_THEME",
   "SCENE_1_SETUP",
+  "SCENE_2_SETUP",
   "SCENE_2_CATALYST",
   "SCENE_3_TWIST",
   "SCENE_4_CLIMAX",
@@ -177,6 +179,7 @@ export const NARRATIVE_STAGES: readonly FSMStage[] = [
 export const STAGE_TRANSITION_MAP: Record<FSMStage, FSMStage | null> = {
   CORE_THEME: "SCENE_1_SETUP",
   SCENE_1_SETUP: "SCENE_2_CATALYST",
+  SCENE_2_SETUP: "SCENE_3_TWIST",
   SCENE_2_CATALYST: "SCENE_3_TWIST",
   SCENE_3_TWIST: "SCENE_4_CLIMAX",
   SCENE_4_CLIMAX: "LOCK_ASSETS",
@@ -314,6 +317,8 @@ export const storyGraphSchema = z.object({
   projectId: z.string().min(1, "projectId/session_id is required"),
   brand: z.string().default("brand-default"),
   currentStage: z.enum(FSM_STAGES).default("CORE_THEME"),
+  current_stage: z.string().optional(),
+  stage: z.string().optional(),
   brief: storyBriefSchema.nullable().default(null),
   lockedNodes: z.array(lockedNodeSchema).default([]),
   pendingOptions: z.array(narrativeOptionSchema).default([]),
@@ -328,7 +333,7 @@ export const storyGraphSchema = z.object({
   environments: z.array(locationAssetSchema).default([]),
   shots: z.array(sceneShotSchema).default([]),
   updatedAt: z.string().default(() => new Date().toISOString()),
-});
+}).passthrough();
 export type StoryGraph = z.infer<typeof storyGraphSchema>;
 
 // ============================================================================
@@ -440,11 +445,40 @@ export class DAGStore {
     try {
       const raw = fs.readFileSync(sessionPath, "utf-8");
       const parsed = JSON.parse(raw);
-      return storyGraphSchema.parse(parsed);
+      const graph = storyGraphSchema.parse(parsed);
+      if (!graph.current_stage) {
+        graph.current_stage = graph.currentStage === "SCENE_2_CATALYST" ? "SCENE_2_SETUP" : graph.currentStage;
+      }
+      if (!graph.stage) {
+        graph.stage = graph.currentStage;
+      }
+      return graph;
     } catch (err) {
       console.error(`[DAGStore] Error reading graph from ${sessionPath}:`, err);
       throw err;
     }
+  }
+
+  /**
+   * Checks if all four scenes have their shots locked.
+   */
+  public isAllShotsLocked(graph: StoryGraph): boolean {
+    if (graph.shots && graph.shots.length >= 4) {
+      const sceneIds = new Set(
+        graph.shots.map((s) => (s.sceneId || (s as any).scene_id || '').toUpperCase()).filter(Boolean)
+      );
+      if (sceneIds.size >= 4) return true;
+    }
+    const anyGraph = graph as any;
+    if (anyGraph.scenes && Array.isArray(anyGraph.scenes) && anyGraph.scenes.length >= 4) {
+      const allFour = anyGraph.scenes.slice(0, 4).every(
+        (sc: any) =>
+          (sc.shots && Object.keys(sc.shots).length > 0) ||
+          (Array.isArray(sc.shots) && sc.shots.length > 0)
+      );
+      if (allFour) return true;
+    }
+    return false;
   }
 
   /**
@@ -457,6 +491,15 @@ export class DAGStore {
     if (!fs.existsSync(this.sessionsDir)) {
       fs.mkdirSync(this.sessionsDir, { recursive: true });
     }
+    if (this.isAllShotsLocked(graph)) {
+      graph.currentStage = "COMPLETED";
+      graph.current_stage = "COMPLETED";
+      graph.stage = "COMPLETED";
+    }
+    if (!graph.current_stage) {
+      graph.current_stage = graph.currentStage === "SCENE_2_CATALYST" ? "SCENE_2_SETUP" : graph.currentStage;
+    }
+    graph.stage = graph.currentStage;
     graph.updatedAt = new Date().toISOString();
     const sessionPath = path.resolve(this.sessionsDir, `${graph.projectId.trim()}.json`);
     fs.writeFileSync(sessionPath, JSON.stringify(graph, null, 2), "utf-8");
@@ -505,6 +548,8 @@ export class DAGStore {
       projectId: finalSessionId,
       brand: sanitizedBrand,
       currentStage: "CORE_THEME",
+      current_stage: "CORE_THEME",
+      stage: "CORE_THEME",
       brief: parsedBrief,
       lockedNodes: [],
       pendingOptions: initialOptions || [],
@@ -546,6 +591,8 @@ export class DAGStore {
       );
     }
     graph.currentStage = "SCENE_1_SETUP";
+    graph.current_stage = "SCENE_1_SETUP";
+    graph.stage = "SCENE_1_SETUP";
     graph.prunedCount += 2;
     graph.pendingOptions = input.nextOptions || [];
     this.save(graph);
@@ -649,6 +696,12 @@ export class DAGStore {
       const nextStage = STAGE_TRANSITION_MAP[graph.currentStage];
       if (nextStage) {
         graph.currentStage = nextStage;
+        if (nextStage === "SCENE_2_CATALYST" || nextStage === "SCENE_2_SETUP") {
+          graph.current_stage = "SCENE_2_SETUP";
+        } else {
+          graph.current_stage = nextStage;
+        }
+        graph.stage = graph.currentStage;
       }
 
       // If nextOptions provided and the new stage is still a narrative stage, populate pendingOptions
@@ -805,6 +858,8 @@ export class DAGStore {
     // Advance stage to COMPILE_SHOTS if currently at LOCK_ASSETS
     if (graph.currentStage === "LOCK_ASSETS") {
       graph.currentStage = "COMPILE_SHOTS";
+      graph.current_stage = "COMPILE_SHOTS";
+      graph.stage = "COMPILE_SHOTS";
     }
     this.save(graph);
     return graph;
@@ -812,13 +867,14 @@ export class DAGStore {
 
   /**
    * Task 2.4: Compiles technical shots with referential integrity checks and server-side prompt synthesis.
-   * Can only be called when stage is COMPILE_SHOTS (after LOCK_ASSETS).
+   * Can only be called when stage is COMPILE_SHOTS (after LOCK_ASSETS) or COMPLETED.
    */
   public compileShots(shotsInput: SceneShot[], sessionId?: string): StoryGraph {
     const graph = this.load(sessionId);
 
-    // 1. FSM Stage Lock: Must be in COMPILE_SHOTS
-    if (graph.currentStage !== "COMPILE_SHOTS") {
+    // 1. FSM Stage Lock: Must be in COMPILE_SHOTS or COMPLETED
+    const allowed = ["COMPILE_SHOTS", "COMPLETED"];
+    if (!allowed.includes(graph.currentStage)) {
       throw new Error(
         `FSM STAGE VIOLATION: Cannot call compile_shots while in stage '${graph.currentStage}'. compile_shots can only be called after LOCK_ASSETS (expected stage: 'COMPILE_SHOTS').`
       );
@@ -914,7 +970,79 @@ export class DAGStore {
 
     graph.shots = compiledShots;
     graph.currentStage = "COMPLETED";
+    graph.current_stage = "COMPLETED";
+    graph.stage = "COMPLETED";
     this.save(graph);
+    return graph;
+  }
+
+  /**
+   * Locks an individual shot into graph.shots, advancing current_stage to COMPLETED
+   * once all four scenes have their shots locked.
+   */
+  public lockShot(input: {
+    sessionId?: string;
+    sceneId: string;
+    shot: SceneShot | any;
+    shotId?: string;
+  }): StoryGraph {
+    const graph = this.load(input.sessionId);
+
+    // Validate stage bounds: must be in COMPILE_SHOTS or COMPLETED
+    const allowed = ["COMPILE_SHOTS", "COMPLETED"];
+    if (!allowed.includes(graph.currentStage)) {
+      throw new Error(
+        `FSM STAGE VIOLATION: Cannot call lock_shot while in stage '${graph.currentStage}'. Expected stage: 'COMPILE_SHOTS'.`
+      );
+    }
+
+    const regChars = graph.assetRegistry.characters;
+    const regBgs = graph.assetRegistry.environments;
+    const availableCharIds = Object.keys(regChars);
+    const availableBgIds = Object.keys(regBgs);
+
+    const shot = sceneShotSchema.parse({
+      ...input.shot,
+      sceneId: input.sceneId,
+      order: input.shot.order || graph.shots.length + 1,
+      characterId: input.shot.characterId || availableCharIds[0] || "CHAR_01",
+      backgroundId: input.shot.backgroundId || availableBgIds[0] || "BG_01",
+      action: input.shot.action || input.shot.visual_intent || input.shot.txt || "Cinematic shot action",
+      compiledVideoPrompt: input.shot.compiledVideoPrompt || input.shot.sota_payload || input.shot.prmpt || "Cinematic video prompt"
+    });
+
+    // Replace if order / scene matches or append
+    const existingIdx = graph.shots.findIndex(
+      (s) => s.sceneId.toUpperCase() === input.sceneId.toUpperCase() && s.order === shot.order
+    );
+    if (existingIdx >= 0) {
+      graph.shots[existingIdx] = shot;
+    } else {
+      graph.shots.push(shot);
+    }
+
+    // Advance to COMPLETED if all four scenes have shots locked
+    if (this.isAllShotsLocked(graph)) {
+      graph.currentStage = "COMPLETED";
+      graph.current_stage = "COMPLETED";
+      graph.stage = "COMPLETED";
+    }
+
+    this.save(graph);
+    return graph;
+  }
+
+  /**
+   * Advances the FSM stage to COMPLETED once all four scenes have their shots locked.
+   */
+  public advanceToCompletedIfShotsLocked(sessionId?: string): StoryGraph {
+    const graph = this.load(sessionId);
+    if (this.isAllShotsLocked(graph)) {
+      graph.currentStage = "COMPLETED";
+      graph.current_stage = "COMPLETED";
+      graph.stage = "COMPLETED";
+      this.save(graph);
+    }
     return graph;
   }
 

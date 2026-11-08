@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const FSM_STAGES = [
   'CORE_THEME',
   'SCENE_1_SETUP',
+  'SCENE_2_SETUP',
   'SCENE_2_CATALYST',
   'SCENE_3_TWIST',
   'SCENE_4_CLIMAX',
