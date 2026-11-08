@@ -204,15 +204,104 @@ export class SessionDagService {
     }
     this.ensureDirectories();
     session.updatedAt = new Date().toISOString();
-    session.scenes = session.lockedNodes;
+
+    const sessionFilePath = path.join(this.getSessionsDir(), `${session.sessionId.trim()}.json`);
+    let existingData: Record<string, any> = {};
+    if (fs.existsSync(sessionFilePath)) {
+      try {
+        existingData = JSON.parse(fs.readFileSync(sessionFilePath, 'utf-8'));
+      } catch {}
+    }
+
+    // Preserve V2 scenes: If existing file or session has V2 scenes (with scene_id, locked_script, shots),
+    // NEVER overwrite them with empty or truncated lockedNodes!
+    const existingScenes: any[] = Array.isArray(existingData.scenes) ? existingData.scenes : [];
+    const isV2Scene = (s: any) => Boolean(s && (s.scene_id || s.locked_script || s.shots || s.active_refs));
+
+    let finalScenes: any[] = [];
+    if (existingScenes.some(isV2Scene)) {
+      // Deep merge existing scenes with any new locked narrative beats
+      finalScenes = existingScenes.map((sc: any) => ({
+        ...sc,
+        active_refs: Array.isArray(sc.active_refs) ? sc.active_refs : [],
+        spatial_memory: Array.isArray(sc.spatial_memory) ? sc.spatial_memory : [],
+        shots: sc.shots && typeof sc.shots === 'object' ? { ...sc.shots } : {}
+      }));
+
+      // If session.scenes has newer updates, merge them in
+      if (Array.isArray(session.scenes) && session.scenes.some(isV2Scene)) {
+        for (const sc of session.scenes) {
+          const idx = finalScenes.findIndex((e: any) => e.scene_id === sc.scene_id);
+          if (idx >= 0) {
+            finalScenes[idx] = {
+              ...finalScenes[idx],
+              ...sc,
+              locked_script: sc.locked_script || finalScenes[idx].locked_script,
+              shots: { ...(finalScenes[idx].shots || {}), ...(sc.shots || {}) },
+              active_refs: (sc.active_refs && sc.active_refs.length > 0) ? sc.active_refs : finalScenes[idx].active_refs
+            };
+          } else {
+            finalScenes.push(sc);
+          }
+        }
+      }
+
+      // If session.lockedNodes has narrative summaries, sync into matching scene if locked_script missing
+      if (Array.isArray(session.lockedNodes)) {
+        for (const node of session.lockedNodes) {
+          const scId = `SCENE_0${node.sceneNumber || 1}`;
+          const existingSc = finalScenes.find((e: any) => e.scene_id === scId);
+          if (existingSc && !existingSc.locked_script && node.chosenNarrativeSummary) {
+            existingSc.locked_script = {
+              id: node.chosenOptionId || '1',
+              style: 'Heartfelt',
+              txt: node.chosenNarrativeSummary
+            };
+          }
+        }
+      }
+    } else if (Array.isArray(session.scenes) && session.scenes.some(isV2Scene)) {
+      finalScenes = session.scenes;
+    } else if (Array.isArray(session.lockedNodes) && session.lockedNodes.length > 0) {
+      finalScenes = session.lockedNodes;
+    } else {
+      finalScenes = existingScenes;
+    }
+    session.scenes = finalScenes;
+
+    // Preserve scene_tags
+    const sceneTags: Record<string, string[]> = {
+      ...(existingData.scene_tags || {}),
+      ...((session as any).scene_tags || {})
+    };
+    for (const sc of finalScenes) {
+      if (sc.scene_id && Array.isArray(sc.active_refs) && sc.active_refs.length > 0) {
+        sceneTags[sc.scene_id] = sc.active_refs;
+      }
+    }
+    (session as any).scene_tags = sceneTags;
+
     const validated = SessionStateSchema.parse(session);
 
-    const sessionData: any = { ...validated };
-    sessionData.currentStage = validated.stage;
-    sessionData.current_stage = validated.stage === 'SCENE_2_CATALYST' ? 'SCENE_2_SETUP' : validated.stage;
+    const sessionData: any = {
+      ...existingData,
+      ...validated,
+      scenes: finalScenes,
+      scene_tags: sceneTags,
+      lockedNodes: validated.lockedNodes && validated.lockedNodes.length > 0 ? validated.lockedNodes : (existingData.lockedNodes || []),
+      assets: validated.assets || existingData.assets || existingData.asset_bible,
+      core_premise: (session as any).core_premise || existingData.core_premise || existingData.coreTheme?.themePremise || validated.goal,
+      global_director_notes: (session as any).global_director_notes || existingData.global_director_notes || '',
+      global_medium: (session as any).global_medium || existingData.global_medium || 'Live-Action Cinematic',
+      project_id: (session as any).project_id || existingData.project_id || validated.sessionId,
+      currentStage: validated.stage,
+      current_stage: validated.stage === 'SCENE_2_CATALYST' ? 'SCENE_2_SETUP' : validated.stage,
+      stage: validated.stage,
+      status: validated.status || existingData.status || 'IN_PROGRESS',
+      updatedAt: session.updatedAt
+    };
 
     // Save isolated session JSON strictly to .nogyaan/sessions/${session_id}.json
-    const sessionFilePath = path.join(this.getSessionsDir(), `${validated.sessionId}.json`);
     fs.writeFileSync(sessionFilePath, JSON.stringify(sessionData, null, 2), 'utf-8');
 
     // Update latest active pointer
@@ -402,7 +491,9 @@ export class SessionDagService {
       SCENE_1_SETUP: 'SCENE_2_CATALYST',
       SCENE_2_SETUP: 'SCENE_3_TWIST',
       SCENE_2_CATALYST: 'SCENE_3_TWIST',
+      SCENE_3_SETUP: 'SCENE_4_CLIMAX',
       SCENE_3_TWIST: 'SCENE_4_CLIMAX',
+      SCENE_4_SETUP: 'LOCK_ASSETS',
       SCENE_4_CLIMAX: 'LOCK_ASSETS',
       LOCK_ASSETS: null,
       COMPILE_SHOTS: null,

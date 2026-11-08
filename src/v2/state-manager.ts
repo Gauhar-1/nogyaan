@@ -238,10 +238,15 @@ export class StateManager {
               txt: sc.chosenNarrativeSummary
             };
           }
+          const tags = Array.isArray(sc.active_refs) && sc.active_refs.length > 0
+            ? sc.active_refs
+            : (parsed.scene_tags && Array.isArray(parsed.scene_tags[sceneId]))
+            ? parsed.scene_tags[sceneId]
+            : [];
           return {
             scene_id: sceneId,
             locked_script: lockedScript || null,
-            active_refs: sc.active_refs || [],
+            active_refs: tags,
             spatial_memory: sc.spatial_memory || [],
             last_shot_egress: sc.last_shot_egress || '',
             shots: sc.shots || {}
@@ -295,12 +300,40 @@ export class StateManager {
       ? undefined
       : validated.assets;
 
-    const allFourScenesHaveShots =
-      this.state.scenes.length >= 4 &&
-      this.state.scenes.slice(0, 4).every((s) => s.shots && Object.keys(s.shots).length > 0);
+    const existingScenes: any[] = Array.isArray(existingData.scenes) ? existingData.scenes : [];
+    const mergedScenes: Scene[] = [];
+    const existingMap = new Map<string, any>();
+    for (const sc of existingScenes) {
+      if (sc && sc.scene_id) existingMap.set(sc.scene_id, sc);
+    }
+
+    for (const sc of validated.scenes) {
+      const existingSc = existingMap.get(sc.scene_id);
+      const mergedShots = {
+        ...(existingSc?.shots || {}),
+        ...(sc.shots || {})
+      };
+      mergedScenes.push({
+        scene_id: sc.scene_id,
+        locked_script: sc.locked_script || existingSc?.locked_script || null,
+        active_refs: (sc.active_refs && sc.active_refs.length > 0) ? sc.active_refs : (existingSc?.active_refs || []),
+        spatial_memory: (sc.spatial_memory && sc.spatial_memory.length > 0) ? sc.spatial_memory : (existingSc?.spatial_memory || []),
+        last_shot_egress: sc.last_shot_egress || existingSc?.last_shot_egress || '',
+        shots: mergedShots
+      });
+      existingMap.delete(sc.scene_id);
+    }
+
+    // Preserve any existing scenes not present in validated.scenes
+    for (const remaining of existingMap.values()) {
+      mergedScenes.push(remaining);
+    }
+
+    // Update in-memory state scenes with merged scenes
+    this.state.scenes = mergedScenes;
 
     let stage = existingData.stage || existingData.currentStage || 'CORE_THEME';
-    if (allFourScenesHaveShots) {
+    if ((this.state as any).isCompleted || existingData.stage === 'COMPLETED') {
       stage = 'COMPLETED';
     }
 
@@ -310,6 +343,15 @@ export class StateManager {
 
     const sessionStatus =
       stage === 'COMPLETED' ? 'COMPLETED' : existingData.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS';
+
+    const sceneTags: Record<string, string[]> = {
+      ...(existingData.scene_tags || {})
+    };
+    for (const sc of mergedScenes) {
+      if (sc.scene_id && Array.isArray(sc.active_refs) && sc.active_refs.length > 0) {
+        sceneTags[sc.scene_id] = sc.active_refs;
+      }
+    }
 
     const merged: Record<string, any> = {
       ...existingData,
@@ -323,7 +365,8 @@ export class StateManager {
       global_medium: validated.global_medium,
       assets: mergedAssets,
       asset_bible: validated.assets,
-      scenes: validated.scenes,
+      scenes: mergedScenes,
+      scene_tags: sceneTags,
       sessionId: existingData.sessionId || validated.project_id,
       updatedAt: new Date().toISOString()
     };
@@ -335,11 +378,14 @@ export class StateManager {
     this.notifyListeners();
   }
 
+  public finalizeStoryboard(): NogyaanState {
+    (this.state as any).isCompleted = true;
+    this.saveToFile();
+    return this.getState();
+  }
+
   public getCurrentStage(): string {
-    const allFourScenesHaveShots =
-      this.state.scenes.length >= 4 &&
-      this.state.scenes.slice(0, 4).every((s) => s.shots && Object.keys(s.shots).length > 0);
-    if (allFourScenesHaveShots) return 'COMPLETED';
+    if ((this.state as any).isCompleted) return 'COMPLETED';
 
     const allScenesLocked =
       this.state.scenes.length >= 4 &&
@@ -350,6 +396,12 @@ export class StateManager {
       (Object.keys(this.state.assets.characters || {}).length > 0 || this.state.assets.product)
     );
 
+    const hasScene4Shots =
+      this.state.scenes.length >= 4 &&
+      this.state.scenes[3].shots &&
+      Object.keys(this.state.scenes[3].shots).length > 0;
+
+    if (hasScene4Shots) return 'SCENE_4_SETUP';
     if (hasAssets && allScenesLocked) return 'COMPILE_SHOTS';
     if (allScenesLocked) return 'LOCK_ASSETS';
 

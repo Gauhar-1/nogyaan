@@ -5,7 +5,9 @@ export const FSM_STAGES = [
   'SCENE_1_SETUP',
   'SCENE_2_SETUP',
   'SCENE_2_CATALYST',
+  'SCENE_3_SETUP',
   'SCENE_3_TWIST',
+  'SCENE_4_SETUP',
   'SCENE_4_CLIMAX',
   'LOCK_ASSETS',
   'COMPILE_SHOTS',
@@ -202,6 +204,7 @@ export const SessionStateSchema = z.object({
   ]).optional(),
   compiledShots: z.array(CompiledShotSchema).default([]),
   directorsCut: z.lazy(() => DirectorsCutSchema).optional(),
+  scene_tags: z.record(z.array(z.string())).optional(),
   status: z.enum(['IN_PROGRESS', 'COMPLETED']).default('IN_PROGRESS')
 }).passthrough();
 

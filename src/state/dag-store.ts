@@ -158,7 +158,9 @@ export const FSM_STAGES = [
   "SCENE_1_SETUP",
   "SCENE_2_SETUP",
   "SCENE_2_CATALYST",
+  "SCENE_3_SETUP",
   "SCENE_3_TWIST",
+  "SCENE_4_SETUP",
   "SCENE_4_CLIMAX",
   "LOCK_ASSETS",
   "COMPILE_SHOTS",
@@ -172,7 +174,9 @@ export const NARRATIVE_STAGES: readonly FSMStage[] = [
   "SCENE_1_SETUP",
   "SCENE_2_SETUP",
   "SCENE_2_CATALYST",
+  "SCENE_3_SETUP",
   "SCENE_3_TWIST",
+  "SCENE_4_SETUP",
   "SCENE_4_CLIMAX",
 ] as const;
 
@@ -181,7 +185,9 @@ export const STAGE_TRANSITION_MAP: Record<FSMStage, FSMStage | null> = {
   SCENE_1_SETUP: "SCENE_2_CATALYST",
   SCENE_2_SETUP: "SCENE_3_TWIST",
   SCENE_2_CATALYST: "SCENE_3_TWIST",
+  SCENE_3_SETUP: "SCENE_4_CLIMAX",
   SCENE_3_TWIST: "SCENE_4_CLIMAX",
+  SCENE_4_SETUP: "LOCK_ASSETS",
   SCENE_4_CLIMAX: "LOCK_ASSETS",
   LOCK_ASSETS: "COMPILE_SHOTS",
   COMPILE_SHOTS: "COMPLETED",
@@ -332,6 +338,7 @@ export const storyGraphSchema = z.object({
   characters: z.array(characterAssetSchema).default([]),
   environments: z.array(locationAssetSchema).default([]),
   shots: z.array(sceneShotSchema).default([]),
+  scene_tags: z.record(z.array(z.string())).optional(),
   updatedAt: z.string().default(() => new Date().toISOString()),
 }).passthrough();
 export type StoryGraph = z.infer<typeof storyGraphSchema>;
@@ -445,6 +452,21 @@ export class DAGStore {
     try {
       const raw = fs.readFileSync(sessionPath, "utf-8");
       const parsed = JSON.parse(raw);
+      if (!parsed.projectId && parsed.sessionId) {
+        parsed.projectId = parsed.sessionId;
+      }
+      if (Array.isArray(parsed.lockedNodes)) {
+        parsed.lockedNodes = parsed.lockedNodes.map((n: any, idx: number) => ({
+          id: n.id || `node-${idx + 1}`,
+          step: n.step || n.sceneNumber || idx + 1,
+          stage: n.stage || "CORE_THEME",
+          selectedOptionId: n.selectedOptionId || n.chosenOptionId || "1",
+          title: n.title || `Scene ${idx + 1}`,
+          description: n.description || n.chosenNarrativeSummary || "",
+          treatmentProse: n.treatmentProse || n.chosenNarrativeSummary || "",
+          lockedAt: n.lockedAt || n.timestamp || new Date().toISOString()
+        }));
+      }
       const graph = storyGraphSchema.parse(parsed);
       if (!graph.current_stage) {
         graph.current_stage = graph.currentStage === "SCENE_2_CATALYST" ? "SCENE_2_SETUP" : graph.currentStage;
@@ -491,18 +513,55 @@ export class DAGStore {
     if (!fs.existsSync(this.sessionsDir)) {
       fs.mkdirSync(this.sessionsDir, { recursive: true });
     }
-    if (this.isAllShotsLocked(graph)) {
-      graph.currentStage = "COMPLETED";
-      graph.current_stage = "COMPLETED";
-      graph.stage = "COMPLETED";
-    }
     if (!graph.current_stage) {
       graph.current_stage = graph.currentStage === "SCENE_2_CATALYST" ? "SCENE_2_SETUP" : graph.currentStage;
     }
     graph.stage = graph.currentStage;
     graph.updatedAt = new Date().toISOString();
     const sessionPath = path.resolve(this.sessionsDir, `${graph.projectId.trim()}.json`);
-    fs.writeFileSync(sessionPath, JSON.stringify(graph, null, 2), "utf-8");
+
+    let existingData: Record<string, any> = {};
+    if (fs.existsSync(sessionPath)) {
+      try {
+        existingData = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+      } catch {}
+    }
+
+    // Preserve V2 scenes: If existing file has V2 scenes, keep them intact
+    const existingScenes: any[] = Array.isArray(existingData.scenes) ? existingData.scenes : [];
+    const isV2Scene = (s: any) => Boolean(s && (s.scene_id || s.locked_script || s.shots || s.active_refs));
+
+    let finalScenes: any[] = [];
+    if (existingScenes.some(isV2Scene)) {
+      finalScenes = existingScenes;
+    } else if (Array.isArray((graph as any).scenes) && (graph as any).scenes.length > 0) {
+      finalScenes = (graph as any).scenes;
+    } else if (Array.isArray(graph.lockedNodes) && graph.lockedNodes.length > 0) {
+      finalScenes = graph.lockedNodes;
+    }
+
+    const sceneTags: Record<string, string[]> = {
+      ...(existingData.scene_tags || {}),
+      ...((graph as any).scene_tags || {})
+    };
+    for (const sc of finalScenes) {
+      if (sc.scene_id && Array.isArray(sc.active_refs) && sc.active_refs.length > 0) {
+        sceneTags[sc.scene_id] = sc.active_refs;
+      }
+    }
+
+    const mergedGraph: any = {
+      ...existingData,
+      ...graph,
+      scenes: finalScenes,
+      scene_tags: sceneTags,
+      currentStage: graph.currentStage,
+      current_stage: graph.current_stage,
+      stage: graph.stage,
+      updatedAt: graph.updatedAt
+    };
+
+    fs.writeFileSync(sessionPath, JSON.stringify(mergedGraph, null, 2), "utf-8");
     this.sessionId = graph.projectId.trim();
     this.filePath = sessionPath;
 
@@ -1021,13 +1080,18 @@ export class DAGStore {
       graph.shots.push(shot);
     }
 
-    // Advance to COMPLETED if all four scenes have shots locked
-    if (this.isAllShotsLocked(graph)) {
-      graph.currentStage = "COMPLETED";
-      graph.current_stage = "COMPLETED";
-      graph.stage = "COMPLETED";
-    }
+    this.save(graph);
+    return graph;
+  }
 
+  /**
+   * Explicitly finalizes the storyboard, advancing the stage to COMPLETED.
+   */
+  public finalizeStoryboard(sessionId?: string): StoryGraph {
+    const graph = this.load(sessionId);
+    graph.currentStage = "COMPLETED";
+    graph.current_stage = "COMPLETED";
+    graph.stage = "COMPLETED";
     this.save(graph);
     return graph;
   }

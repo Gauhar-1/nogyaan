@@ -116,7 +116,7 @@ assert.equal(assetsGraph.current_stage, 'COMPILE_SHOTS');
 assert.equal(assetsGraph.currentStage, 'COMPILE_SHOTS');
 console.log('  ✔ Narrative branching and lock_assets strictly advanced through COMPILE_SHOTS.');
 
-// 8. Lock shots across all 4 scenes -> COMPLETED
+// 8. Lock shots across all 4 scenes -> stays in COMPILE_SHOTS (no auto-premature completion)
 assert.equal(dagStore.isAllShotsLocked(assetsGraph), false);
 
 dagStore.lockShot({
@@ -139,17 +139,22 @@ const preCompletedGraph = dagStore.load(testSessionId1);
 assert.equal(preCompletedGraph.current_stage, 'COMPILE_SHOTS');
 assert.equal(dagStore.isAllShotsLocked(preCompletedGraph), false);
 
-// 4th scene locked -> transitions to COMPLETED
-const completedGraph = dagStore.lockShot({
+// 4th scene locked -> does NOT auto-complete; stays in COMPILE_SHOTS
+const shot4Graph = dagStore.lockShot({
   sessionId: testSessionId1,
   sceneId: 'SCENE_04',
   shot: { order: 4, action: 'Shot 4 action', compiledVideoPrompt: 'Shot 4 prompt' }
 });
 
-assert.equal(completedGraph.current_stage, 'COMPLETED', 'Must transition to COMPLETED when all 4 scenes have shots');
+assert.equal(shot4Graph.current_stage, 'COMPILE_SHOTS', 'Must NOT auto-trigger COMPLETED stage just because Scene 4 receives its first shot');
+console.log('  ✔ Locking shots in Scene 4 does not prematurely advance to COMPLETED.');
+
+// Now explicitly call finalizeStoryboard -> advances to COMPLETED
+const completedGraph = dagStore.finalizeStoryboard(testSessionId1);
+assert.equal(completedGraph.current_stage, 'COMPLETED', 'Must transition to COMPLETED upon explicit finalizeStoryboard');
 assert.equal(completedGraph.currentStage, 'COMPLETED', 'currentStage must be COMPLETED');
 assert.equal(completedGraph.stage, 'COMPLETED', 'stage must be COMPLETED');
-console.log('  ✔ Locking shots for all 4 scenes transitioned current_stage and currentStage to "COMPLETED".');
+console.log('  ✔ Explicit finalizeStoryboard transitioned current_stage and currentStage to "COMPLETED".');
 
 // ============================================================================
 // Test 2: MCP Tool Stage Bounds Enforcement
@@ -336,23 +341,59 @@ for (let sc = 1; sc <= 3; sc++) {
   assert.equal(compData.workflow_complete, false);
 }
 
-// Compile shot for Scene 4 (Final Shot) -> MUST trigger finish line and advance to COMPLETED
-const finalCompileRes = await callTool('compile_sota_prompt', {
+// Compile shot for Scene 4 Shot 1 -> MUST stay in SCENE_4_SETUP and NOT complete prematurely
+const scene4Shot1Res = await callTool('compile_sota_prompt', {
   scene_id: 'SCENE_04',
   shot_id: 'SHOT_01',
   selected_option: '1',
   visual_intent: 'Luca wipes down the chrome steam wand as steam diffuses in the sunrise light.'
 });
-assert(!finalCompileRes.isError);
-const finalRaw = finalCompileRes.content[0].text;
+assert(!scene4Shot1Res.isError);
+const s4s1Data = JSON.parse(scene4Shot1Res.content[0].text.slice(scene4Shot1Res.content[0].text.indexOf('{')));
+assert.equal(s4s1Data.workflow_complete, false, 'Scene 4 Shot 1 must NOT auto-complete workflow');
+assert.equal(s4s1Data.current_stage, 'SCENE_4_SETUP', 'System must stay in SCENE_4_SETUP indefinitely');
+console.log('  ✔ Scene 4 Shot 1 stayed in SCENE_4_SETUP without premature completion.');
+
+// Compile shot for Scene 4 Shot 2 -> user locks multiple shots in Scene 4
+const scene4Shot2Res = await callTool('compile_sota_prompt', {
+  scene_id: 'SCENE_04',
+  shot_id: 'SHOT_02',
+  selected_option: '1',
+  visual_intent: 'Luca pours the rich crema espresso with artisan precision.'
+});
+assert(!scene4Shot2Res.isError);
+const s4s2Data = JSON.parse(scene4Shot2Res.content[0].text.slice(scene4Shot2Res.content[0].text.indexOf('{')));
+assert.equal(s4s2Data.workflow_complete, false, 'Scene 4 Shot 2 must NOT auto-complete workflow');
+assert.equal(s4s2Data.current_stage, 'SCENE_4_SETUP', 'System remains in SCENE_4_SETUP');
+console.log('  ✔ Scene 4 Shot 2 added; system supports multiple shots per scene without auto-completing.');
+
+// Verify State Preservation & Zero Truncation: all 4 scenes and shots intact on disk!
+const sessionFileOnDisk = JSON.parse(
+  fs.readFileSync(path.join(workspaceDir, '.nogyaan', 'sessions', `${testSessionId2}.json`), 'utf-8')
+);
+assert(Array.isArray(sessionFileOnDisk.scenes), 'scenes must exist as an array');
+assert.equal(sessionFileOnDisk.scenes.length, 4, 'All 4 scenes must be preserved in the session file');
+assert(sessionFileOnDisk.scenes[0].shots && Object.keys(sessionFileOnDisk.scenes[0].shots).length >= 1, 'Scene 1 shots preserved');
+assert(sessionFileOnDisk.scenes[1].shots && Object.keys(sessionFileOnDisk.scenes[1].shots).length >= 1, 'Scene 2 shots preserved');
+assert(sessionFileOnDisk.scenes[2].shots && Object.keys(sessionFileOnDisk.scenes[2].shots).length >= 1, 'Scene 3 shots preserved');
+assert(sessionFileOnDisk.scenes[3].shots && Object.keys(sessionFileOnDisk.scenes[3].shots).length >= 2, 'Scene 4 multiple shots preserved');
+assert(sessionFileOnDisk.scene_tags, 'scene_tags must be preserved');
+console.log('  ✔ State Preservation Verified: All 4 scenes, all nested shots, and scene_tags preserved on disk with zero truncation.');
+
+// Call finalize_storyboard -> explicitly completes storyboard and triggers finish line notice
+const finalizeRes = await callTool('finalize_storyboard', {
+  director_notes: 'Treatment approved for final production render.'
+});
+assert(!finalizeRes.isError);
+const finalRaw = finalizeRes.content[0].text;
 const finalData = JSON.parse(finalRaw.slice(finalRaw.indexOf('{')));
 
-assert.equal(finalData.workflow_complete, true, 'workflow_complete must be true on final shot');
+assert.equal(finalData.workflow_complete, true, 'workflow_complete must be true upon finalize_storyboard');
 assert.equal(finalData.currentStage, 'COMPLETED', 'currentStage must be COMPLETED');
 assert.equal(finalData.current_stage, 'COMPLETED', 'current_stage must be COMPLETED');
 assert.equal(finalData.stage, 'COMPLETED', 'stage must be COMPLETED');
 assert(finalRaw.includes('Your Director\'s Treatment is complete! Open http://localhost:4321'), 'Must include Finish Line congratulatory notice');
-console.log('  ✔ Workflow completion detected on Scene 4 Shot 1; advanced stage to "COMPLETED" with exact finish line prompt.');
+console.log('  ✔ finalize_storyboard successfully completed the workflow and returned Finish Line notification.');
 
 // Clean up test sessions
 try {

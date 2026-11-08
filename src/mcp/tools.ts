@@ -10,6 +10,7 @@ import open from 'open';
 import { PresetRegistryService } from '../services/preset-registry.service.js';
 import { PromptCompilerService } from '../services/prompt-compiler.service.js';
 import { SessionDagService } from '../services/session-dag.service.js';
+import { DAGStore } from '../state/dag-store.js';
 import { StateManager } from '../v2/state-manager.js';
 import { WritersRoomService } from '../v2/writers-room.service.js';
 import { AssetLockerService } from '../v2/asset-locker.service.js';
@@ -212,6 +213,12 @@ export const updateAssetBibleSchema = z.object({
   global_medium: z.enum(['Live-Action Cinematic', '2D Anime', '3D Pixar Style']).optional().describe('Global rendering medium'),
   global_director_notes: z.string().optional().describe('Persistent cinematic rules applying across all scenes')
 });
+
+export const finalizeStoryboardSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  director_notes: z.string().optional().describe('Final director notes or sign-off message'),
+  notes: z.string().optional().describe('Alias for director_notes')
+}).passthrough();
 
 // ============================================================================
 // Tool Registration Implementation
@@ -813,6 +820,29 @@ export function registerMcpTools(
             },
             required: ['session_id']
           }
+        },
+        {
+          name: 'finalize_storyboard',
+          description:
+            'Explicitly finalizes the storyboard once all desired shots across scenes are locked. Transitions the workflow to COMPLETED, saves director notes, and returns the dynamic studio dashboard URL.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              session_id: {
+                type: 'string',
+                description: 'Unique project session ID'
+              },
+              director_notes: {
+                type: 'string',
+                description: 'Optional final director notes or sign-off message'
+              },
+              notes: {
+                type: 'string',
+                description: 'Alias for director_notes'
+              }
+            },
+            required: ['session_id']
+          }
         }
       ]
     };
@@ -1263,8 +1293,9 @@ export function registerMcpTools(
               activeSession.stage = 'COMPILE_SHOTS';
               (activeSession as any).currentStage = 'COMPILE_SHOTS';
               (activeSession as any).current_stage = 'COMPILE_SHOTS';
-              sessionService.saveSession(activeSession);
             }
+            (activeSession as any).scene_tags = result.extraction.scene_tagging || {};
+            sessionService.saveSession(activeSession);
           } catch {}
         }
 
@@ -1317,6 +1348,17 @@ export function registerMcpTools(
           (s) => s.scene_id.toLowerCase() === validated.scene_id.toLowerCase()
         );
         const activeRefs = targetScene?.active_refs || [];
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+
+        if (fs.existsSync(sessionPath)) {
+          try {
+            const activeSession = sessionService.loadSession(sessionId);
+            const currentTags = (activeSession as any).scene_tags || {};
+            currentTags[validated.scene_id] = activeRefs;
+            (activeSession as any).scene_tags = currentTags;
+            sessionService.saveSession(activeSession);
+          } catch {}
+        }
 
         const systemMsg = `[SYSTEM: Scene tags updated for ${validated.scene_id}. Active references: ${activeRefs.join(', ')}. Keep your response under 2 sentences.]`;
 
@@ -1346,7 +1388,7 @@ export function registerMcpTools(
         const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
         if (fs.existsSync(sessionPath)) {
           const activeSession = sessionService.loadSession(sessionId);
-          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED'];
+          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED', 'SCENE_4_SETUP', 'SCENE_4_CLIMAX'];
           const state = currentSm.getState();
           const hasAssets = Boolean(state.assets && (Object.keys(state.assets.characters || {}).length > 0 || state.assets.product));
           if (!allowedStages.includes(activeSession.stage) && !hasAssets) {
@@ -1402,7 +1444,7 @@ export function registerMcpTools(
         const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
         if (fs.existsSync(sessionPath)) {
           const activeSession = sessionService.loadSession(sessionId);
-          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED'];
+          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED', 'SCENE_4_SETUP', 'SCENE_4_CLIMAX'];
           const state = currentSm.getState();
           const hasAssets = Boolean(state.assets && (Object.keys(state.assets.characters || {}).length > 0 || state.assets.product));
           if (!allowedStages.includes(activeSession.stage) && !hasAssets) {
@@ -1447,25 +1489,32 @@ export function registerMcpTools(
           resolvedShotId.toLowerCase().includes('shot_3') ||
           resolvedShotId.toLowerCase().includes('shot_03') ||
           resolvedShotId.toLowerCase().includes('final');
-        const isFinalShot =
-          isShot3OrHigher ||
-          shotCount >= 3 ||
+        const isExplicitFinalShot =
           validated.is_final_shot === true ||
           validated.final_shot === true;
+        const isFinalShot =
+          isExplicitFinalShot ||
+          (isFinalScene && isShot3OrHigher && shotCount >= 3);
 
-        const allFourScenesHaveShots =
-          scenes.length >= 4 &&
-          scenes.slice(0, 4).every((s) => s.shots && Object.keys(s.shots).length > 0);
-        const isWorkflowComplete = (isFinalScene && isFinalShot) || result.workflow_complete === true || allFourScenesHaveShots;
+        // Do NOT automatically trigger COMPLETED just because Scene 4 receives its first shot.
+        // Users can lock multiple shots per scene. The system stays in SCENE_4_SETUP indefinitely until
+        // the user explicitly calls finalize_storyboard or passes is_final_shot.
+        const isWorkflowComplete = (isFinalScene && isFinalShot) || (result as any).workflow_complete === true;
         const dynamicStudioUrl = `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`;
 
-        if (isWorkflowComplete && fs.existsSync(sessionPath)) {
+        const nextStageName = isWorkflowComplete
+          ? 'COMPLETED'
+          : isFinalScene
+          ? 'SCENE_4_SETUP'
+          : 'COMPILE_SHOTS';
+
+        if (fs.existsSync(sessionPath)) {
           try {
             const activeSession = sessionService.loadSession(sessionId);
-            activeSession.stage = 'COMPLETED';
-            activeSession.status = 'COMPLETED';
-            (activeSession as any).currentStage = 'COMPLETED';
-            (activeSession as any).current_stage = 'COMPLETED';
+            activeSession.stage = nextStageName as any;
+            if (isWorkflowComplete) activeSession.status = 'COMPLETED';
+            (activeSession as any).currentStage = nextStageName;
+            (activeSession as any).current_stage = nextStageName;
             sessionService.saveSession(activeSession);
           } catch {}
         }
@@ -1485,9 +1534,9 @@ export function registerMcpTools(
             : `SOTA AI prompt compiled and saved for ${result.scene_id} -> ${result.shot_id}. Temporal egress updated.`,
           workflow_complete: isWorkflowComplete,
           studio_url: dynamicStudioUrl,
-          currentStage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
-          current_stage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
-          stage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
+          currentStage: nextStageName,
+          current_stage: nextStageName,
+          stage: nextStageName,
           scene_id: result.scene_id,
           shot_id: result.shot_id,
           shot: result.shot,
@@ -1516,7 +1565,7 @@ export function registerMcpTools(
         const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
         if (fs.existsSync(sessionPath)) {
           const activeSession = sessionService.loadSession(sessionId);
-          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED'];
+          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED', 'SCENE_4_SETUP', 'SCENE_4_CLIMAX'];
           const state = currentSm.getState();
           const hasAssets = Boolean(state.assets && (Object.keys(state.assets.characters || {}).length > 0 || state.assets.product));
           if (!allowedStages.includes(activeSession.stage) && !hasAssets) {
@@ -1575,7 +1624,7 @@ export function registerMcpTools(
         const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
         if (fs.existsSync(sessionPath)) {
           const activeSession = sessionService.loadSession(sessionId);
-          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED'];
+          const allowedStages = ['COMPILE_SHOTS', 'COMPLETED', 'SCENE_4_SETUP', 'SCENE_4_CLIMAX'];
           const state = currentSm.getState();
           const hasAssets = Boolean(state.assets && (Object.keys(state.assets.characters || {}).length > 0 || state.assets.product));
           if (!allowedStages.includes(activeSession.stage) && !hasAssets) {
@@ -1617,24 +1666,32 @@ export function registerMcpTools(
           validated.shot_id.toLowerCase().includes('shot_3') ||
           validated.shot_id.toLowerCase().includes('shot_03') ||
           validated.shot_id.toLowerCase().includes('final');
-        const isFinalShot =
-          isShot3OrHigher ||
-          shotCount >= 3 ||
+        const isExplicitFinalShot =
           validated.is_final_shot === true ||
           validated.final_shot === true;
+        const isFinalShot =
+          isExplicitFinalShot ||
+          (isFinalScene && isShot3OrHigher && shotCount >= 3);
 
-        const allFourScenesHaveShots =
-          scenes.length >= 4 &&
-          scenes.slice(0, 4).every((s) => s.shots && Object.keys(s.shots).length > 0);
-        const isWorkflowComplete = (isFinalScene && isFinalShot) || allFourScenesHaveShots;
+        // Do NOT automatically trigger COMPLETED just because Scene 4 receives its first shot.
+        // Users can lock multiple shots per scene. The system stays in SCENE_4_SETUP indefinitely until
+        // the user explicitly calls finalize_storyboard or passes is_final_shot.
+        const isWorkflowComplete = isFinalScene && isFinalShot;
+        const dynamicStudioUrl = `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`;
 
-        if (isWorkflowComplete && fs.existsSync(sessionPath)) {
+        const nextStageName = isWorkflowComplete
+          ? 'COMPLETED'
+          : isFinalScene
+          ? 'SCENE_4_SETUP'
+          : 'COMPILE_SHOTS';
+
+        if (fs.existsSync(sessionPath)) {
           try {
             const activeSession = sessionService.loadSession(sessionId);
-            activeSession.stage = 'COMPLETED';
-            activeSession.status = 'COMPLETED';
-            (activeSession as any).currentStage = 'COMPLETED';
-            (activeSession as any).current_stage = 'COMPLETED';
+            activeSession.stage = nextStageName as any;
+            if (isWorkflowComplete) activeSession.status = 'COMPLETED';
+            (activeSession as any).currentStage = nextStageName;
+            (activeSession as any).current_stage = nextStageName;
             sessionService.saveSession(activeSession);
           } catch {}
         }
@@ -1643,7 +1700,7 @@ export function registerMcpTools(
           '[SYSTEM: Prompt compiled and saved. Ask the user to type "N" for Next Shot or "S" for Next Scene. If they want to refine, tell them to type "R" with their notes. Keep your response under 2 sentences.]';
 
         const completionSystemMsg =
-          '[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director\'s Treatment is complete! Open http://localhost:4321 in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]';
+          `[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director's Treatment is complete! Open ${dynamicStudioUrl} in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]`;
 
         const systemMsg = isWorkflowComplete ? completionSystemMsg : normalSystemMsg;
 
@@ -1657,11 +1714,11 @@ export function registerMcpTools(
                   message: isWorkflowComplete
                     ? `Final shot option locked for ${validated.scene_id} -> ${validated.shot_id}. Storyboard workflow complete!`
                     : `Shot option locked for ${validated.scene_id} -> ${validated.shot_id}. Spatial memory silently updated.`,
-                  currentStage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
-                  current_stage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
-                  stage: isWorkflowComplete ? 'COMPLETED' : 'COMPILE_SHOTS',
+                  currentStage: nextStageName,
+                  current_stage: nextStageName,
+                  stage: nextStageName,
                   workflow_complete: isWorkflowComplete,
-                  studio_url: `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`,
+                  studio_url: dynamicStudioUrl,
                   scene_id: validated.scene_id,
                   shot_id: validated.shot_id,
                   locked_shot: shotToLock,
@@ -1798,6 +1855,64 @@ export function registerMcpTools(
                 null,
                 2
               )
+            }
+          ]
+        };
+      }
+
+      if (name === 'finalize_storyboard') {
+        const validated = finalizeStoryboardSchema.parse(input);
+        const sessionPath = path.resolve(sessionService.getSessionsDir(), `${sessionId}.json`);
+        if (fs.existsSync(sessionPath)) {
+          try {
+            const activeSession = sessionService.loadSession(sessionId);
+            activeSession.stage = 'COMPLETED';
+            activeSession.status = 'COMPLETED';
+            (activeSession as any).currentStage = 'COMPLETED';
+            (activeSession as any).current_stage = 'COMPLETED';
+            sessionService.saveSession(activeSession);
+          } catch {}
+        }
+
+        if (validated.director_notes || validated.notes) {
+          currentSm.setGlobalDirectorNotes(validated.director_notes || validated.notes || '');
+        }
+
+        currentSm.finalizeStoryboard();
+
+        try {
+          const ds = new DAGStore(sessionService.getWorkspaceDir(), sessionId);
+          ds.finalizeStoryboard(sessionId);
+        } catch {}
+
+        const dynamicStudioUrl = `http://localhost:4321/?session=${encodeURIComponent(sessionId)}`;
+        const completionSystemMsg = `[SYSTEM: This was the final shot of the storyboard. The workflow is complete. You MUST explicitly congratulate the user and tell them: "Your Director's Treatment is complete! Open ${dynamicStudioUrl} in your browser to view the final monochrome storyboard, copy your SOTA payloads for Kling/Runway, and Export your Blueprint to PDF." Do not ask for further prompts.]`;
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `${completionSystemMsg}\n\n${JSON.stringify(
+                {
+                  success: true,
+                  message: 'Storyboard finalized successfully. Workflow complete.',
+                  sessionId,
+                  currentStage: 'COMPLETED',
+                  current_stage: 'COMPLETED',
+                  stage: 'COMPLETED',
+                  status: 'COMPLETED',
+                  workflow_complete: true,
+                  studio_url: dynamicStudioUrl,
+                  state: currentSm.getState(),
+                  system_instruction: completionSystemMsg,
+                  _systemDirective: {
+                    instruction: completionSystemMsg,
+                    workflow_complete: true
+                  }
+                },
+                null,
+                2
+              )}`
             }
           ]
         };
