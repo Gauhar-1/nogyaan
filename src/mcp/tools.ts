@@ -158,6 +158,8 @@ export const rerollNodeSchema = z.object({
   node_id: z.string().optional().describe('Target node identifier'),
   scene_id: z.string().optional().describe('Scene identifier'),
   shot_id: z.string().optional().describe('Shot identifier'),
+  new_visual_intent: z.string().optional().describe('Explicit replacement visual intent for destructive overwrite'),
+  new_sota_payload: z.string().optional().describe('Explicit replacement SOTA prompt payload for destructive overwrite'),
   user_feedback: z.string().optional().describe('Targeted directorial refinement feedback'),
   direction: z.string().optional().describe('Alternative parameter for user direction'),
   notes: z.string().optional().describe('Alternative parameter for user notes'),
@@ -173,6 +175,8 @@ export const rerollShotSchema = z.object({
   scene_id: z.string().optional().describe('Scene identifier (e.g., "SCENE_01")'),
   shot_id: z.string().optional().describe('Shot identifier (e.g., "SHOT_01")'),
   node_id: z.string().optional().describe('Composite node identifier (e.g. "SCENE_01:SHOT_01")'),
+  new_visual_intent: z.string().optional().describe('Explicit replacement visual intent for destructive overwrite'),
+  new_sota_payload: z.string().optional().describe('Explicit replacement SOTA prompt payload for destructive overwrite'),
   user_feedback: z.string().optional().describe('Directorial refinement feedback'),
   direction: z.string().optional().describe('Alternative parameter for user direction'),
   notes: z.string().optional().describe('Alternative parameter for user notes'),
@@ -618,7 +622,7 @@ export function registerMcpTools(
         {
           name: 'reroll_node',
           description:
-            'Targeted Re-Roll: Modifies ONLY an isolated node (scene or shot ID) in the session state. CRITICAL: When rerolling, you must COMPLETELY REWRITE the node from scratch to naturally weave in the user\'s new instructions. NEVER append bracketed notes like [Direction: ...]. Ensure old, contradictory physical facts are completely erased from the new text.',
+            'Targeted Re-Roll: Modifies ONLY an isolated node (scene or shot ID) in the session state. Completely replaces the target node using new_visual_intent / new_sota_payload for destructive overwrite, or rewrites from scratch naturally. Never appends bracketed notes.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -629,6 +633,14 @@ export function registerMcpTools(
               node_id: {
                 type: 'string',
                 description: 'Target node identifier (scene_id like "SCENE_01", shot_id like "SHOT_01", or "SCENE_01:SHOT_01")'
+              },
+              new_visual_intent: {
+                type: 'string',
+                description: 'Explicit replacement visual intent string for destructive overwrite'
+              },
+              new_sota_payload: {
+                type: 'string',
+                description: 'Explicit replacement SOTA prompt payload for destructive overwrite'
               },
               user_feedback: {
                 type: 'string',
@@ -641,7 +653,7 @@ export function registerMcpTools(
         {
           name: 'reroll_shot',
           description:
-            'Targeted Shot Re-Roll: CRITICAL: When rerolling, you must COMPLETELY REWRITE the sota_payload and visual_intent from scratch to naturally weave in the user\'s new instructions. NEVER append bracketed notes like [Direction: ...]. Ensure old, contradictory physical facts are completely erased from the new text.',
+            'Targeted Shot Re-Roll: Destructively overwrites a shot using new_visual_intent and new_sota_payload, or completely rewrites visual_intent and sota_payload from scratch to naturally weave in user instructions. Never appends bracketed notes.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -660,6 +672,14 @@ export function registerMcpTools(
               node_id: {
                 type: 'string',
                 description: 'Composite node identifier (e.g. "SCENE_01:SHOT_01")'
+              },
+              new_visual_intent: {
+                type: 'string',
+                description: 'Explicit replacement visual intent string for destructive overwrite'
+              },
+              new_sota_payload: {
+                type: 'string',
+                description: 'Explicit replacement SOTA prompt payload for destructive overwrite'
               },
               user_feedback: {
                 type: 'string',
@@ -1399,12 +1419,14 @@ export function registerMcpTools(
           validated.node_id ||
           (validated.scene_id && validated.shot_id ? `${validated.scene_id}:${validated.shot_id}` : validated.shot_id || validated.scene_id);
         const feedback = validated.user_feedback || validated.direction || validated.notes || '';
+        const explicitPayload = validated.new_sota_payload || (validated as any).sota_payload || (validated as any).prmpt;
+        const explicitIntent = validated.new_visual_intent || (validated as any).visual_intent || (validated as any).txt;
 
         if (!targetNodeId) {
           throw new Error('Target node identifier (node_id or scene_id/shot_id) is required for re-roll.');
         }
-        if (!feedback && !(validated as any).sota_payload && !(validated as any).visual_intent && !(validated as any).txt) {
-          throw new Error('user_feedback, direction, or replacement content is required for re-roll.');
+        if (!feedback && !explicitPayload && !explicitIntent) {
+          throw new Error('user_feedback, new_sota_payload, or new_visual_intent is required for re-roll.');
         }
 
         const rr = new RerollService(currentSm);
@@ -1413,8 +1435,10 @@ export function registerMcpTools(
           user_feedback: feedback,
           direction: validated.direction,
           notes: validated.notes,
-          sota_payload: (validated as any).sota_payload,
-          visual_intent: (validated as any).visual_intent,
+          new_sota_payload: validated.new_sota_payload,
+          new_visual_intent: validated.new_visual_intent,
+          sota_payload: explicitPayload,
+          visual_intent: explicitIntent,
           txt: (validated as any).txt,
           prmpt: (validated as any).prmpt,
           style: (validated as any).style

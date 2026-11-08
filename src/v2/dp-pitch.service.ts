@@ -155,6 +155,12 @@ export class DpPitchService {
     const contextSlice = sm.getShotContextSlice(input.scene_id, resolvedShotId);
     const lastEgress = input.last_shot_egress || contextSlice.last_shot_egress || '';
 
+    const sceneMatch = input.scene_id.match(/(\d+)/);
+    const sceneNumber = sceneMatch ? parseInt(sceneMatch[1], 10) : 1;
+    const shotMatch = resolvedShotId.match(/(\d+)/);
+    const shotNumber = shotMatch ? parseInt(shotMatch[1], 10) : 1;
+    const isScene1Shot1 = sceneNumber === 1 && shotNumber === 1;
+
     // 1. Resolve visual_intent
     let visualIntent = input.visual_intent || '';
     if (!visualIntent) {
@@ -186,36 +192,37 @@ export class DpPitchService {
             input.scene_id,
             resolvedShotId,
             visualIntent,
-            lastEgress,
+            isScene1Shot1 ? '' : lastEgress,
             contextSlice
           );
           if (llmResult) {
             sotaPayload = llmResult.sota_payload;
-            egress = parseStrictEgress(llmResult.egress);
+            egress = parseStrictEgress(llmResult.egress || sotaPayload);
             spatialFacts = llmResult.spatial_facts || [];
           }
         } catch (err: any) {
-          console.warn(`[DpPitch] LLM SOTA compilation failed (${err.message}). Using heuristic compiler.`);
+          console.warn(`[DpPitch] LLM SOTA compilation failed (${err.message}). Using dynamic compiler.`);
         }
       }
     }
 
     if (!sotaPayload) {
-      const heuristic = this.generateHeuristicSotaPayload(
+      const compiled = this.generateDynamicSotaPayload(
         input.scene_id,
         resolvedShotId,
         visualIntent,
         lastEgress,
         contextSlice
       );
-      sotaPayload = heuristic.sota_payload;
-      if (!egress) egress = parseStrictEgress(heuristic.egress);
-      if (spatialFacts.length === 0) spatialFacts = heuristic.spatial_facts;
+      sotaPayload = compiled.sota_payload;
+      egress = compiled.egress;
+      if (spatialFacts.length === 0) spatialFacts = compiled.spatial_facts;
     }
 
-    // Ensure egress is strictly parsed and free of meta-notes
-    if (!egress) {
-      egress = parseStrictEgress(sotaPayload);
+    // Real Egress: compute the actual visual end-frame of the generated payload
+    const realEgress = parseStrictEgress(sotaPayload);
+    if (realEgress) {
+      egress = realEgress;
     }
 
     // Strip any accidental art style buzzwords
@@ -318,6 +325,126 @@ export class DpPitchService {
     };
   }
 
+  public generateDynamicSotaPayload(
+    scene_id: string,
+    shot_id: string,
+    visualIntent: string,
+    lastEgress: string,
+    slice: {
+      scene_narrative: string;
+      filtered_assets: AssetBible;
+      spatial_memory: string[];
+      last_shot_egress: string;
+      global_director_notes: string;
+    }
+  ): { sota_payload: string; egress: string; spatial_facts: string[] } {
+    const sceneMatch = scene_id.match(/(\d+)/);
+    const sceneNumber = sceneMatch ? parseInt(sceneMatch[1], 10) : 1;
+    const shotMatch = shot_id.match(/(\d+)/);
+    const shotNumber = shotMatch ? parseInt(shotMatch[1], 10) : 1;
+    const isScene1Shot1 = sceneNumber === 1 && shotNumber === 1;
+
+    // 1. Handoff Logic: If shot_number === 1 && scene_number === 1, completely omit Temporal Handshake / Ingress
+    let ingressClause = '';
+    if (!isScene1Shot1) {
+      if (lastEgress && lastEgress.trim().length > 0) {
+        ingressClause = `Shot begins with ${lastEgress.trim()}, seamless image-loop continuity from previous shot.`;
+      } else {
+        ingressClause = `Shot begins establishing continuous physical action from preceding scene.`;
+      }
+    }
+
+    // 2. User's explicit shot description
+    const explicitShotDesc = (visualIntent || '')
+      .replace(/\[(?:SYSTEM|Direction|Note|User Note)[^\]]*\]/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    // 3. Specific @CHAR and @BG asset definitions from dag-store
+    const assets = slice.filtered_assets || this.stateManager.getState().assets || { characters: {}, backgrounds: {}, product: '' };
+    const charEntries = Object.entries(assets.characters || {});
+    const bgEntries = Object.entries(assets.backgrounds || {});
+    const prodDesc = typeof assets.product === 'string' ? assets.product : (assets.product as any)?.name || '';
+
+    const assetClauses: string[] = [];
+    if (charEntries.length > 0) {
+      const charsText = charEntries
+        .map(([k, desc]) => `@${k.replace(/^@/, '')} (${desc})`)
+        .join(', ');
+      assetClauses.push(`Subject: ${charsText}`);
+    }
+    if (bgEntries.length > 0) {
+      const bgText = bgEntries
+        .map(([k, desc]) => `@${k.replace(/^@/, '')} (${desc})`)
+        .join(', ');
+      assetClauses.push(`Setting: ${bgText}`);
+    }
+    if (prodDesc) {
+      assetClauses.push(`Product: @PROD_01 (${prodDesc})`);
+    }
+    const assetSpec = assetClauses.length > 0 ? assetClauses.join('. ') + '.' : '';
+
+    // 4. Computed camera physics derived from the chosen style (Auteur/Kinetic/Theatrical)
+    const lowerIntent = explicitShotDesc.toLowerCase();
+    let style: 'Auteur' | 'Kinetic' | 'Theatrical' = 'Auteur';
+    if (lowerIntent.includes('kinetic') || lowerIntent.includes('dynamic') || lowerIntent.includes('fast') || lowerIntent.includes('friction') || lowerIntent.includes('grit') || lowerIntent.includes('motion')) {
+      style = 'Kinetic';
+    } else if (lowerIntent.includes('theatric') || lowerIntent.includes('symmetr') || lowerIntent.includes('architect') || lowerIntent.includes('dead-center') || lowerIntent.includes('precision') || lowerIntent.includes('order')) {
+      style = 'Theatrical';
+    } else {
+      style = 'Auteur';
+    }
+
+    let cameraPhysics = '';
+    if (style === 'Kinetic') {
+      cameraPhysics = 'Camera Physics [Kinetic]: Dynamic continuous tracking vector matching subject momentum on wide 28mm optical axis at energetic pacing.';
+    } else if (style === 'Theatrical') {
+      cameraPhysics = 'Camera Physics [Theatrical]: Centered perpendicular camera alignment on balanced symmetrical axis with deep focus architectural staging.';
+    } else {
+      cameraPhysics = 'Camera Physics [Auteur]: Slow continuous push-in vector on 50mm eye-level axis with subtle pacing and shallow depth of field.';
+    }
+
+    // 5. Concluding visual frame (Real Egress)
+    const primaryChar = charEntries[0] ? `@${charEntries[0][0].replace(/^@/, '')}` : '@CHAR_01';
+    const primaryBg = bgEntries[0] ? `@${bgEntries[0][0].replace(/^@/, '')}` : '@BG_01';
+
+    let terminalVisual = '';
+    const sentences = explicitShotDesc.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+    const lastSentence = sentences[sentences.length - 1] || '';
+    if (lastSentence && lastSentence.length > 10 && !lastSentence.toLowerCase().includes('camera')) {
+      terminalVisual = lastSentence.replace(/[.]+$/, '');
+    } else {
+      terminalVisual = `${primaryChar} in settled posture within ${primaryBg}, maintaining stable optical eyeline`;
+    }
+
+    const egressSentence = `Shot ends with ${terminalVisual}.`;
+
+    // 6. Dynamic Assembly
+    const parts: string[] = [];
+    if (ingressClause) parts.push(ingressClause);
+    if (explicitShotDesc) parts.push(explicitShotDesc.endsWith('.') ? explicitShotDesc : `${explicitShotDesc}.`);
+    if (assetSpec) parts.push(assetSpec);
+    if (cameraPhysics) parts.push(cameraPhysics);
+    parts.push(egressSentence);
+
+    const fullPayload = parts.join(' ').replace(/\s{2,}/g, ' ').trim();
+    const realEgress = parseStrictEgress(fullPayload);
+
+    const spatialFacts: string[] = [];
+    if (charEntries[0]) {
+      spatialFacts.push(`@${charEntries[0][0].replace(/^@/, '')} is positioned in ${bgEntries[0] ? `@${bgEntries[0][0].replace(/^@/, '')}` : 'scene'}`);
+    }
+    if (prodDesc) {
+      spatialFacts.push(`@PROD_01 is staged in immediate foreground workspace`);
+    }
+
+    return {
+      sota_payload: fullPayload,
+      egress: realEgress,
+      spatial_facts: spatialFacts
+    };
+  }
+
   private generateHeuristicSotaPayload(
     scene_id: string,
     shot_id: string,
@@ -331,48 +458,7 @@ export class DpPitchService {
       global_director_notes: string;
     }
   ): { sota_payload: string; egress: string; spatial_facts: string[] } {
-    const charKeys = Object.keys(slice.filtered_assets.characters || {});
-    const charRef1 = charKeys[0] ? `@${charKeys[0]}` : '@CHAR_01';
-    const bgKeys = Object.keys(slice.filtered_assets.backgrounds || {});
-    const bgRef = bgKeys[0] ? `@${bgKeys[0]}` : '@BG_01';
-    const prodRef = '@PROD_01';
-
-    // 1. Ingress Handshake
-    const ingressClause = lastEgress && lastEgress.trim().length > 0
-      ? `Shot begins with ${lastEgress}, seamless image-loop continuity from previous shot`
-      : `Shot begins with ${charRef1} positioned inside ${bgRef}, maintaining composed physical balance`;
-
-    // 2. Single-Vector Camera (NO compound pan-tilts)
-    const isKinetic = visualIntent.toLowerCase().includes('kinetic') || visualIntent.toLowerCase().includes('raw');
-    const isTheatrical = visualIntent.toLowerCase().includes('symmetr') || visualIntent.toLowerCase().includes('theatrical');
-    let cameraClause = 'Camera holds locked-off on static tripod at eye-level axis 4 feet from subject';
-    if (isKinetic) {
-      cameraClause = 'Camera glides along single continuous forward push-in vector on eye-level axis at moderate speed';
-    } else if (isTheatrical) {
-      cameraClause = 'Camera bolted on static locked-off tripod dead-center at eye-level height with symmetrical room alignment';
-    }
-
-    // 3. Spatial Anchoring (Camera axis & light origin)
-    const lightOrigin = 'Primary key light originating from screen-left high window casting soft natural directional falloff, ambient warm fill from screen-right';
-
-    // 4. Physical Posture & Eyeline
-    const postureClause = `${charRef1} maintains upright posture, shoulders relaxed, hands positioned in foreground workspace, eyeline locked 10 degrees screen-left towards ${prodRef}`;
-
-    // 5. Egress Handshake
-    const egressClause = `${charRef1} holds steady resting posture beside ${prodRef}, eyes locked in calm focus`;
-
-    const fullPayload = `${ingressClause}. ${cameraClause}. Spatial Anchor: ${lightOrigin}. Physical Posture: ${postureClause}. Action: Continuous subtle micro-movement and natural breathing. Shot ends with ${egressClause}.`;
-
-    const spatialFacts = [
-      `${charRef1} is positioned in ${bgRef}`,
-      `${prodRef} is positioned screen-left of ${charRef1}`
-    ];
-
-    return {
-      sota_payload: fullPayload,
-      egress: egressClause,
-      spatial_facts: spatialFacts
-    };
+    return this.generateDynamicSotaPayload(scene_id, shot_id, visualIntent, lastEgress, slice);
   }
 
   // ==========================================================================

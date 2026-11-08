@@ -14,6 +14,8 @@ export interface RerollNodeInput {
   feedback?: string;
   notes?: string;
   direction?: string;
+  new_visual_intent?: string;
+  new_sota_payload?: string;
   sota_payload?: string;
   visual_intent?: string;
   txt?: string;
@@ -51,8 +53,10 @@ export class RerollService {
       throw new Error('node_id is required for targeted re-roll.');
     }
     const feedback = input.user_feedback || input.feedback || input.direction || input.notes || '';
-    if (!feedback.trim() && !input.sota_payload && !input.visual_intent && !input.txt) {
-      throw new Error('user_feedback, direction, or replacement content is required for targeted re-roll.');
+    const directPayload = input.new_sota_payload || input.sota_payload || input.prmpt;
+    const directIntent = input.new_visual_intent || input.visual_intent || input.txt;
+    if (!feedback.trim() && !directPayload && !directIntent) {
+      throw new Error('user_feedback, new_sota_payload, or new_visual_intent is required for targeted re-roll.');
     }
 
     const contextSlice = this.stateManager.getNodeContextSlice(input.node_id);
@@ -83,8 +87,8 @@ export class RerollService {
       const updatedShot = await this.rerollShotNode(
         targetNode as LockedShot,
         feedback,
-        input.sota_payload || input.prmpt,
-        input.visual_intent || input.txt,
+        directPayload,
+        directIntent,
         input.style
       );
       const newState = this.stateManager.updateLockedShot(found.scene.scene_id, found.shot_id, updatedShot);
@@ -331,7 +335,7 @@ export class RerollService {
 
     // Camera movement requests
     if (/\b(?:static|locked off|locked-off|tripod hold|no camera movement)\b/i.test(cleanInst)) {
-      rewritten = rewritten.replace(/Camera (?:glides|moves|pushes|tracks)[^\.]*\./gi, 'Camera holds locked-off on static tripod at eye-level axis 4 feet from subject.');
+      rewritten = rewritten.replace(/Camera (?:glides|moves|pushes|tracks)[^\.]*\./gi, 'Camera holds locked-off on eye-level axis with stable optical framing.');
     }
 
     // Clean up spaces/punctuation

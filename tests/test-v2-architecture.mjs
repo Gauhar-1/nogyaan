@@ -441,7 +441,7 @@ try {
   assert(compileData1.shot.sota_payload.length > 0);
 
   const payload1 = compileData1.shot.sota_payload;
-  assert(payload1.includes('Shot begins with'), 'SOTA payload must contain INGRESS clause');
+  assert(!payload1.includes('Shot begins with'), 'Scene 1 Shot 1 must completely omit INGRESS continuity line');
   assert(payload1.includes('Shot ends with'), 'SOTA payload must contain EGRESS clause');
 
   // Verify silent state persistence on disk for Scene 1 Shot 1
