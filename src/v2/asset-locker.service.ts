@@ -4,6 +4,8 @@ import { StateManager } from './state-manager.js';
 
 export interface ExtractActiveAssetsInput {
   scene_id?: string;
+  company_name?: string;
+  product_goal?: string;
   assets?: AssetBible | any;
   scene_tagging?: Record<string, string[]>;
   extraction?: AssetExtractionResult;
@@ -53,7 +55,7 @@ export class AssetLockerService {
     if (!extraction) {
       if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY) {
         try {
-          extraction = await this.callLlmExtractor(sceneNarratives);
+          extraction = await this.callLlmExtractor(sceneNarratives, input);
         } catch (err: any) {
           console.warn(`[AssetLocker] LLM extraction failed (${err.message}). Using heuristic engine.`);
         }
@@ -61,7 +63,7 @@ export class AssetLockerService {
     }
 
     if (!extraction) {
-      extraction = this.generateHeuristicAssetExtraction(sceneNarratives);
+      extraction = this.generateHeuristicAssetExtraction(sceneNarratives, input);
     }
 
     const validated = AssetExtractionResultSchema.parse(extraction);
@@ -74,15 +76,22 @@ export class AssetLockerService {
   }
 
   private generateHeuristicAssetExtraction(
-    scenes: Array<{ scene_id: string; txt: string }>
+    scenes: Array<{ scene_id: string; txt: string }>,
+    input?: ExtractActiveAssetsInput
   ): AssetExtractionResult {
     const allText = scenes.map((s) => s.txt).join(' ');
     const currentState = this.stateManager.getState();
     const premise = currentState.core_premise || '';
+    const briefContext = this.stateManager.getBriefContext();
+    const companyName = input?.company_name || briefContext.company_name;
+    const productGoal = input?.product_goal || briefContext.product_goal;
+    const productName = briefContext.product_name;
 
-    // 1. Actively parse Product
+    // 1. Actively parse Product from brief context first, then state, then narrative
     let productDesc = '';
-    if (currentState.assets?.product && currentState.assets.product.trim().length > 0) {
+    if (productName && productName.trim().length > 0) {
+      productDesc = `${productName.trim()} featured in dynamic commercial presentation`;
+    } else if (currentState.assets?.product && currentState.assets.product.trim().length > 0) {
       productDesc = currentState.assets.product;
     } else if (premise.includes(':')) {
       const parts = premise.split(':');
@@ -90,6 +99,12 @@ export class AssetLockerService {
       const match = left.match(/[-—–]\s*([^:–—]+)/);
       if (match && match[1]) {
         productDesc = `${match[1].trim()} featured in dynamic commercial presentation`;
+      }
+    }
+    if (!productDesc && productGoal) {
+      const mGoal = productGoal.match(/\b(?:for|of|with|featuring|launching|announcing)\s+([A-Za-z0-9_-]+(?:\s+[A-Za-z0-9_-]+)?)/i);
+      if (mGoal && mGoal[1]) {
+        productDesc = `Hero ${mGoal[1].trim()} featured in dynamic commercial presentation`;
       }
     }
     if (!productDesc) {
@@ -101,15 +116,56 @@ export class AssetLockerService {
       }
     }
 
-    // 2. Actively parse Characters from locked_script texts
+    // 2. Actively parse Characters from locked_script texts (strictly excluding company and brand names)
     const characters: Record<string, string> = {};
     const knownNames: string[] = [];
 
-    const nameMatches = allText.matchAll(/\b([A-Z][a-z]+(?:\s+ji)?)\b/g);
+    // Extract character names primarily from visual action staging
+    // Strip quoted dialogue lines and CTA slogans to avoid extracting common vocabulary
+    let textForCharacterExtraction = '';
+    for (const sc of scenes) {
+      const visualMatches = sc.txt.match(/\[Visual\]:\s*([\s\S]*?)(?=\[(?:Voiceover|Dialogue|On-Screen|CTA)|$)/gi);
+      if (visualMatches && visualMatches.length > 0) {
+        textForCharacterExtraction += ' ' + visualMatches.map((m) => m.replace(/\[Visual\]:\s*/i, '')).join(' ');
+      } else {
+        const stripped = sc.txt.replace(/"[^"]*"/g, ' ').replace(/'[^']*'/g, ' ');
+        textForCharacterExtraction += ' ' + stripped;
+      }
+    }
+
+    const forbiddenCompanyTokens = new Set<string>();
+    if (companyName) {
+      forbiddenCompanyTokens.add(companyName.toLowerCase());
+      for (const token of companyName.toLowerCase().split(/[\s_—–-]+/)) {
+        if (token.length > 1) forbiddenCompanyTokens.add(token);
+      }
+    }
+    const forbiddenProductTokens = new Set<string>();
+    if (productName) {
+      forbiddenProductTokens.add(productName.toLowerCase());
+      for (const token of productName.toLowerCase().split(/[\s_—–-]+/)) {
+        if (token.length > 1) forbiddenProductTokens.add(token);
+      }
+    }
+
+    const nameMatches = textForCharacterExtraction.matchAll(/\b([A-Z][a-z]+(?:\s+ji)?)\b/g);
     for (const m of nameMatches) {
       const candidate = m[1];
-      const ignored = ['Scene', 'Act', 'Shot', 'The', 'A', 'An', 'In', 'On', 'With', 'Camera', 'Close', 'Wide', 'Angle', 'Focus', 'Light', 'Option', 'Style', 'And', 'Picking', 'Opening'];
+      const ignored = [
+        'Scene', 'Act', 'Shot', 'The', 'A', 'An', 'In', 'On', 'With', 'Camera', 'Close',
+        'Wide', 'Angle', 'Focus', 'Light', 'Option', 'Style', 'And', 'Picking', 'Opening',
+        'Visual', 'Voiceover', 'Dialogue', 'Screen', 'Text', 'Cta', 'Beat', 'Action',
+        'Company', 'Brand', 'Product', 'Goal', 'Hero', 'Some', 'When', 'Tradition', 'Closer',
+        'Tell', 'Stop', 'Yeah', 'Notice', 'Keep', 'Standard', 'Pure', 'Done', 'Fast', 'High',
+        'Another', 'Every', 'Fresh', 'Morning', 'Today', 'Tomorrow', 'Grab', 'Take', 'Look',
+        'See', 'Hold', 'Make', 'Start', 'Power', 'Real', 'True', 'Best', 'New', 'Good',
+        'Free', 'First', 'Next', 'Last', 'Final', 'After', 'Before', 'While', 'Since'
+      ];
       if (!ignored.includes(candidate) && !knownNames.includes(candidate)) {
+        const candLower = candidate.toLowerCase();
+        if (forbiddenCompanyTokens.has(candLower) || forbiddenProductTokens.has(candLower)) {
+          continue; // Strict directive: Do NOT extract company or product name as a character
+        }
         if (!/^(coffee|chai|tea|brand|product|office|kitchen|room|table|desk|store|app)$/i.test(candidate)) {
           knownNames.push(candidate);
         }
@@ -213,10 +269,26 @@ export class AssetLockerService {
   }
 
   private async callLlmExtractor(
-    scenes: Array<{ scene_id: string; txt: string }>
+    scenes: Array<{ scene_id: string; txt: string }>,
+    input?: ExtractActiveAssetsInput
   ): Promise<AssetExtractionResult | null> {
+    const briefContext = this.stateManager.getBriefContext();
+    const companyName = input?.company_name || briefContext.company_name;
+    const productGoal = input?.product_goal || briefContext.product_goal;
+    const productName = briefContext.product_name;
+
     const userPrompt = `Analyze these locked commercial scenes:
 ${JSON.stringify(scenes, null, 2)}
+
+Brief Context:
+- Company / Brand Name: ${companyName || 'Not specified'}
+- Product Goal / Premise: ${productGoal || 'Not specified'}
+- Main Product: ${productName || 'Not specified'}
+
+CRITICAL DIRECTIVES:
+- Do not extract the company name as a character. Identify the main product from the brief.
+- Characters (@CHAR_01..N) must be individuals/actors, NEVER the company or brand.
+- Hero Product (@PROD_01) must be the main product from the brief.
 
 Extract the minimal AssetBible and tag active asset references per scene.
 Output raw minified JSON only:

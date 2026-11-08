@@ -76,9 +76,22 @@ export const lockAssetsSchema = z.object({
 export const extractActiveAssetsSchema = z.object({
   session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
   scene_id: z.string().optional().describe('Optional target scene ID'),
+  company_name: z.string().optional().describe('Optional company / brand name to avoid extracting as character'),
+  product_goal: z.string().optional().describe('Optional campaign product goal'),
   assets: z.any().optional().describe('Directly extracted assets (characters, environments/backgrounds, product)'),
   extraction: z.any().optional().describe('Alias for assets'),
   scene_tagging: z.any().optional().describe('Optional scene-to-asset tagging')
+}).passthrough();
+
+export const updateSceneTagsSchema = z.object({
+  session_id: z.string().min(1, 'session_id is required').describe('Target session ID'),
+  scene_id: z.string().min(1, 'scene_id is required').describe('Target scene ID (e.g. "SCENE_01")'),
+  active_refs: z.array(z.string()).optional().describe('Full replacement active asset references for this scene'),
+  tags: z.array(z.string()).optional().describe('Alias for active_refs'),
+  add_characters: z.union([z.array(z.string()), z.string()]).optional().describe('Character(s) to add to scene (e.g. ["CHAR_01"] or "@CHAR_01")'),
+  remove_characters: z.union([z.array(z.string()), z.string()]).optional().describe('Character(s) to remove from scene'),
+  add_tags: z.union([z.array(z.string()), z.string()]).optional().describe('Asset tag(s) to add to scene (e.g. ["@BG_02"])'),
+  remove_tags: z.union([z.array(z.string()), z.string()]).optional().describe('Asset tag(s) to remove from scene')
 }).passthrough();
 
 export const pitchScriptOptionsSchema = z.object({
@@ -475,9 +488,66 @@ export function registerMcpTools(
               session_id: {
                 type: 'string',
                 description: 'Target session ID'
+              },
+              company_name: {
+                type: 'string',
+                description: 'Optional company name to prevent extracting as a character'
+              },
+              product_goal: {
+                type: 'string',
+                description: 'Optional campaign product goal'
               }
             },
             required: ['session_id']
+          }
+        },
+        {
+          name: 'update_scene_tags',
+          description:
+            'Updates or modifies active asset references and characters for a specific scene (e.g. manually add/remove characters or replace active_refs).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              session_id: {
+                type: 'string',
+                description: 'Target session ID'
+              },
+              scene_id: {
+                type: 'string',
+                description: 'Target scene ID (e.g. "SCENE_01")'
+              },
+              active_refs: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Full replacement active asset references for this scene'
+              },
+              tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Alias for active_refs'
+              },
+              add_characters: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Character(s) to add to scene (e.g. ["CHAR_01"] or "@CHAR_01")'
+              },
+              remove_characters: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Character(s) to remove from scene'
+              },
+              add_tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Asset tag(s) to add to scene'
+              },
+              remove_tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Asset tag(s) to remove from scene'
+              }
+            },
+            required: ['session_id', 'scene_id']
           }
         },
         {
@@ -1116,6 +1186,8 @@ export function registerMcpTools(
         const al = new AssetLockerService(currentSm);
         const result = await al.extractActiveAssets({
           scene_id: (validated as any).scene_id,
+          company_name: (validated as any).company_name,
+          product_goal: (validated as any).product_goal,
           assets: (validated as any).assets || (validated as any).extraction,
           extraction: (validated as any).extraction,
           scene_tagging: (validated as any).scene_tagging
@@ -1137,6 +1209,50 @@ export function registerMcpTools(
                   _systemDirective: {
                     instruction: systemMsg
                   }
+                },
+                null,
+                2
+              )}`
+            }
+          ]
+        };
+      }
+
+      if (name === 'update_scene_tags') {
+        const validated = updateSceneTagsSchema.parse(input);
+        const toArray = (val: any) => {
+          if (!val) return undefined;
+          return Array.isArray(val) ? val : [val];
+        };
+
+        const updatedState = currentSm.updateSceneTags(validated.scene_id, {
+          tags: validated.tags,
+          active_refs: validated.active_refs,
+          add_tags: toArray(validated.add_tags),
+          remove_tags: toArray(validated.remove_tags),
+          add_characters: toArray(validated.add_characters),
+          remove_characters: toArray(validated.remove_characters)
+        });
+
+        const targetScene = updatedState.scenes.find(
+          (s) => s.scene_id.toLowerCase() === validated.scene_id.toLowerCase()
+        );
+        const activeRefs = targetScene?.active_refs || [];
+
+        const systemMsg = `[SYSTEM: Scene tags updated for ${validated.scene_id}. Active references: ${activeRefs.join(', ')}. Keep your response under 2 sentences.]`;
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `${systemMsg}\n\n${JSON.stringify(
+                {
+                  success: true,
+                  scene_id: validated.scene_id,
+                  active_refs: activeRefs,
+                  message: `Scene ${validated.scene_id} tags updated. Active references: ${activeRefs.join(', ')}`,
+                  state: updatedState,
+                  system_instruction: systemMsg
                 },
                 null,
                 2

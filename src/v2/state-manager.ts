@@ -672,6 +672,112 @@ export class StateManager {
     return this.getState();
   }
 
+  public getBriefContext(): { company_name: string; product_goal: string; product_name: string } {
+    let company_name = '';
+    let product_goal = '';
+    let product_name = '';
+
+    if (fs.existsSync(this.filePath)) {
+      try {
+        const raw = fs.readFileSync(this.filePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        company_name = parsed.company || parsed.brand || parsed.coreTheme?.brandName || parsed.brief?.company || '';
+        product_name = parsed.product || parsed.coreTheme?.productName || parsed.brief?.product || '';
+        product_goal = parsed.goal || parsed.coreTheme?.campaignGoal || parsed.brief?.goal || parsed.core_premise || '';
+      } catch {}
+    }
+
+    if (this.state.core_premise) {
+      const fullMatch = this.state.core_premise.match(/^(.*?)\s*[-—–]\s*(.*?):\s*(.*)$/);
+      if (fullMatch) {
+        if (!company_name && fullMatch[1].length < 40) company_name = fullMatch[1].trim();
+        if (!product_name && fullMatch[2].length < 60) product_name = fullMatch[2].trim();
+        if (!product_goal) product_goal = fullMatch[3].trim();
+      } else {
+        const m = this.state.core_premise.match(/^(.*?)\s*[-—:]\s*(.*)$/);
+        if (m && !company_name && m[1].length < 40) {
+          company_name = m[1].trim();
+        }
+      }
+    }
+
+    if (!product_name && this.state.assets?.product) {
+      product_name = this.state.assets.product;
+    }
+
+    return {
+      company_name: company_name.trim(),
+      product_goal: product_goal.trim() || this.state.core_premise || '',
+      product_name: product_name.trim()
+    };
+  }
+
+  public updateSceneTags(
+    scene_id: string,
+    params: {
+      tags?: string[];
+      active_refs?: string[];
+      add_tags?: string[];
+      remove_tags?: string[];
+      add_characters?: string[];
+      remove_characters?: string[];
+    }
+  ): NogyaanState {
+    let scene = this.state.scenes.find((s) => s.scene_id.toLowerCase() === scene_id.toLowerCase());
+    if (!scene) {
+      scene = {
+        scene_id,
+        locked_script: null,
+        active_refs: [],
+        spatial_memory: [],
+        last_shot_egress: '',
+        shots: {}
+      };
+      this.state.scenes.push(scene);
+    }
+
+    if (!scene.active_refs) {
+      scene.active_refs = [];
+    }
+
+    // Direct replacement if explicit tags or active_refs provided
+    if (params.active_refs && Array.isArray(params.active_refs)) {
+      scene.active_refs = params.active_refs.map((t) => (t.startsWith('@') ? t : `@${t}`));
+    } else if (params.tags && Array.isArray(params.tags)) {
+      scene.active_refs = params.tags.map((t) => (t.startsWith('@') ? t : `@${t}`));
+    }
+
+    // Add tags / characters
+    const toAdd = [
+      ...(params.add_tags || []),
+      ...(params.add_characters || [])
+    ].map((t) => (t.startsWith('@') ? t : `@${t}`));
+
+    for (const tag of toAdd) {
+      if (!scene.active_refs.includes(tag)) {
+        scene.active_refs.push(tag);
+      }
+    }
+
+    // Remove tags / characters
+    const toRemove = [
+      ...(params.remove_tags || []),
+      ...(params.remove_characters || [])
+    ].map((t) => (t.startsWith('@') ? t : `@${t}`).toLowerCase());
+
+    if (toRemove.length > 0) {
+      scene.active_refs = scene.active_refs.filter(
+        (existing) =>
+          !toRemove.includes(existing.toLowerCase()) &&
+          !toRemove.includes(`@${existing.toLowerCase()}`) &&
+          !toRemove.includes(existing.replace(/^@/, '').toLowerCase())
+      );
+    }
+
+    this.saveToFile();
+    return this.getState();
+  }
+
   // ==========================================================================
   // JIT Context Slicers (Zero Global Context Drag)
   // ==========================================================================

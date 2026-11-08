@@ -65,30 +65,120 @@ export class WritersRoomService {
   ): ScriptPitch[] {
     const guidance = userGuidance ? ` Focus: ${userGuidance}.` : '';
     const prevContext = slice.previous_scene_narrative
-      ? `Picking up from: "${slice.previous_scene_narrative.slice(0, 80)}..."`
+      ? `Picking up from previous beat: "${slice.previous_scene_narrative.slice(0, 70)}..."`
       : 'Opening scene establishing character and daily friction.';
 
     const premiseTheme = slice.core_premise || 'Authentic human storytelling';
+    const brief = this.stateManager.getBriefContext();
+    const brandLabel = brief.company_name || 'Brand';
 
-    // 1. Heartfelt Nostalgist (grounded, intimate, emotional connection around core premise)
+    // Dynamic entropy pools for varied, non-identical pitches across calls
+    const timestampSeed = Date.now() % 5;
+    const heartfeltAngles = [
+      {
+        visual: `${prevContext} An intimate, grounded human beat highlighting ${premiseTheme}. Characters navigate real emotional stakes with understated honesty and quiet recognition.${guidance}`,
+        vo: `"Some things you don't say out loud. You just share them."`,
+        cta: `${brandLabel} — For the moments that matter.`
+      },
+      {
+        visual: `${prevContext} Morning light catches a relatable, quiet gesture between characters centered on ${premiseTheme}. Soft eye contact and an unhurried, reassuring presence take center stage.${guidance}`,
+        vo: `"When everything moves too fast, start with what's real."`,
+        cta: `${brandLabel} — Built on genuine craft.`
+      },
+      {
+        visual: `${prevContext} A tender, generational exchange unfolding around ${premiseTheme}. A gentle hand placed on a shoulder, subtle breath of relief.${guidance}`,
+        vo: `"Tradition isn't about looking back. It's about who you share it with."`,
+        cta: `${brandLabel} — Timeless care.`
+      },
+      {
+        visual: `${prevContext} Naturalistic atmosphere where character pauses amidst the rush, experiencing clarity through ${premiseTheme}.${guidance}`,
+        vo: `"The best decisions don't make noise. They just feel right."`,
+        cta: `${brandLabel} — Pure focus.`
+      },
+      {
+        visual: `${prevContext} Authentic human vulnerability turning into quiet confidence as ${premiseTheme} bridges a subtle distance between people.${guidance}`,
+        vo: `"Closer than words ever get."`,
+        cta: `${brandLabel} — Together in every detail.`
+      }
+    ];
+
+    const viralAngles = [
+      {
+        visual: `${prevContext} High-impact relatable friction tackling ${premiseTheme}. Rapid-fire visual escalation turns everyday frustration into a dynamic, modern turning point with punchy pacing.${guidance}`,
+        vo: `"Tell me you're not still doing this the old way. Stop scrolling."`,
+        cta: `Tap to switch to ${brandLabel}.`
+      },
+      {
+        visual: `${prevContext} Kinetic, fast-cut montage of the universal absurdity of the daily struggle before ${premiseTheme} flips the script with unexpected comedic swagger.${guidance}`,
+        vo: `"We all pretend this doesn't drive us crazy. Until today."`,
+        cta: `Experience ${brandLabel} now.`
+      },
+      {
+        visual: `${prevContext} Sudden comedic record-scratch freeze frame breaking the fourth wall as ${premiseTheme} solves the exact chaos unfolding.${guidance}`,
+        vo: `"Yeah, that's me. You're probably wondering how I fixed this in 3 seconds."`,
+        cta: `${brandLabel}: Done differently.`
+      },
+      {
+        visual: `${prevContext} Hyper-relatable POV sequence tracking micro-annoyances escalating before the swift, satisfying intervention of ${premiseTheme}.${guidance}`,
+        vo: `"POV: You finally stopped tolerating mediocre compromises."`,
+        cta: `Upgrade with ${brandLabel}.`
+      },
+      {
+        visual: `${prevContext} Subverted expectation hook: what looks like high-stakes drama resolves into effortless modern simplicity with ${premiseTheme}.${guidance}`,
+        vo: `"Plot twist: it was never actually that complicated."`,
+        cta: `Discover ${brandLabel}.`
+      }
+    ];
+
+    const offbeatAngles = [
+      {
+        visual: `${prevContext} Stylized deadpan observation framing ${premiseTheme}. Meticulous physical choreography and dry visual comedy give everyday routine actions unexpected narrative weight.${guidance}`,
+        vo: `"Fascinating. Completely unnecessary to panic, yet here we are."`,
+        cta: `${brandLabel} — Methodically superior.`
+      },
+      {
+        visual: `${prevContext} Symmetrical, surreal tableau where characters maintain absolute straight-faced seriousness while interacting with ${premiseTheme} in an eccentric physical setup.${guidance}`,
+        vo: `"Notice the trajectory of common sense entering the room."`,
+        cta: `${brandLabel} — Unapologetically precise.`
+      },
+      {
+        visual: `${prevContext} Quirky micro-rhythm choreography: rhythmic clicking, synchronized head tilts, and deadpan timing establishing ${premiseTheme}.${guidance}`,
+        vo: `"Standard procedure requires zero drama."`,
+        cta: `${brandLabel} — Uniquely calibrated.`
+      },
+      {
+        visual: `${prevContext} Droll Wes Anderson-inspired wide composition where a single deliberate object shift around ${premiseTheme} recalibrates the entire scene's tension.${guidance}`,
+        vo: `"A highly calculated upgrade. Observe."`,
+        cta: `${brandLabel} — Designed with intention.`
+      },
+      {
+        visual: `${prevContext} Deadpan comedic stillness contrasting sudden absurd environmental motion, highlighting the poise of ${premiseTheme}.${guidance}`,
+        vo: `"Keep calm. The math checks out."`,
+        cta: `${brandLabel} — Simply better.`
+      }
+    ];
+
+    // Pick dynamic angle using seed and random entropy so repeated calls yield distinct concepts
+    const pickA = heartfeltAngles[(timestampSeed + Math.floor(Math.random() * heartfeltAngles.length)) % heartfeltAngles.length];
+    const pickB = viralAngles[(timestampSeed + 1 + Math.floor(Math.random() * viralAngles.length)) % viralAngles.length];
+    const pickC = offbeatAngles[(timestampSeed + 2 + Math.floor(Math.random() * offbeatAngles.length)) % offbeatAngles.length];
+
     const optA: ScriptPitch = {
       id: 'A',
       style: 'Heartfelt',
-      txt: `${prevContext} An intimate, grounded human beat highlighting ${premiseTheme}. Characters navigate real emotional stakes with understated honesty, letting subtle body language and shared recognition carry the moment.${guidance}`.trim()
+      txt: `[Visual]: ${pickA.visual}\n[Voiceover/Dialogue]: ${pickA.vo}\n[On-Screen Text / CTA]: ${pickA.cta}`
     };
 
-    // 2. Viral Disruptor (punchy, high-energy, relatable friction)
     const optB: ScriptPitch = {
       id: 'B',
       style: 'Viral',
-      txt: `${prevContext} High-impact relatable friction tackling ${premiseTheme}. Rapid-fire visual escalation turns everyday frustration into a dynamic, modern turning point with punchy visual pacing.${guidance}`.trim()
+      txt: `[Visual]: ${pickB.visual}\n[Voiceover/Dialogue]: ${pickB.vo}\n[On-Screen Text / CTA]: ${pickB.cta}`
     };
 
-    // 3. Offbeat Eccentric (deadpan, eccentric, stylized precision)
     const optC: ScriptPitch = {
       id: 'C',
       style: 'Offbeat',
-      txt: `${prevContext} Stylized deadpan observation framing ${premiseTheme}. Meticulous physical choreography and dry visual comedy give everyday objects and routine actions unexpected narrative weight.${guidance}`.trim()
+      txt: `[Visual]: ${pickC.visual}\n[Voiceover/Dialogue]: ${pickC.vo}\n[On-Screen Text / CTA]: ${pickC.cta}`
     };
 
     return [optA, optB, optC];
@@ -99,10 +189,17 @@ export class WritersRoomService {
     slice: { core_premise: string; previous_scene_narrative: string | null },
     userGuidance?: string
   ): Promise<ScriptPitch[] | null> {
+    const entropySeed = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     const userPrompt = `Scene Target: "${scene_id}"
 Core Campaign Premise / Goal: ${slice.core_premise}
 Locked Scene N-1 Narrative (Continuity): ${slice.previous_scene_narrative || 'None (Scene 1 Opening)'}
 User Guidance: ${userGuidance || 'None provided'}
+Entropy Seed: ${entropySeed} (CRITICAL: Explore a fresh, non-repetitive creative angle)
+
+Format each pitch "txt" as a structured commercial beat sheet:
+[Visual]: <staging and human action>
+[Voiceover/Dialogue]: <dialogue or voiceover>
+[On-Screen Text / CTA]: <graphic copy or call-to-action>
 
 Generate exactly 3 ScriptPitch options in raw minified JSON:
 [
@@ -122,6 +219,7 @@ Generate exactly 3 ScriptPitch options in raw minified JSON:
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
           max_tokens: 1024,
+          temperature: 0.9,
           system: WRITER_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: userPrompt }]
         })
@@ -142,6 +240,7 @@ Generate exactly 3 ScriptPitch options in raw minified JSON:
         },
         body: JSON.stringify({
           model: 'gpt-4o',
+          temperature: 0.9,
           messages: [
             { role: 'system', content: WRITER_SYSTEM_PROMPT },
             { role: 'user', content: userPrompt }
