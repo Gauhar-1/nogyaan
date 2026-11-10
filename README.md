@@ -5,12 +5,14 @@
 
   **AI wants to give you gyaan. Real directors just want the shot.**
 
-  An MCP server + Local Director's Workbench that stops Claude from hallucinating multi-scene video scripts. Steer stories with 1 keystroke (`1`, `2`, `3`), prune rejected ideas from context memory, lock your Cast & Set (`CHAR_01`), and compile single-take camera prompts for **Kling 3.0, Veo 3.1, Runway Gen-4.5, and Seedance**.
+  An MCP server + Local Director's Workbench that stops Claude from hallucinating multi-scene video scripts. **Never burn API credits or Runway tokens on bad prompts again.** Steer stories with 1 keystroke (`1`, `2`, `3`), prune rejected ideas from context memory, lock your Cast & Set (`CHAR_01`), and compile single-take camera prompts for **Kling 3.0, Veo 3.1, Runway Gen-4.5, and Seedance**.
 
   [![MIT License](https://img.shields.io/badge/License-MIT-10B981.svg?style=flat-square)](LICENSE)
   [![MCP Compatible](https://img.shields.io/badge/MCP-Claude%20%7C%20Cursor-F3F4F6.svg?style=flat-square)](https://modelcontextprotocol.io)
 </div>
 
+### 📺 Watch the 60-Second Workflow
+[![nogyaan workflow](https://res.cloudinary.com/dccklqtaw/image/upload/v1794296258/thumbnail.png)](https://youtu.be/CmYrs3Y-bJE)
 ---
 
 ## See the Difference in 5 Seconds
