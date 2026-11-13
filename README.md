@@ -12,7 +12,7 @@
 </div>
 
 ### 📺 Watch the 60-Second Workflow
-[![nogyaan workflow](https://res.cloudinary.com/dccklqtaw/image/upload/v1794296258/thumbnail.png)](https://youtu.be/CmYrs3Y-bJE)
+[![nogyaan workflow](/assets/thumbnail.png)](https://youtu.be/CmYrs3Y-bJE)
 ---
 
 ## See the Difference in 5 Seconds
@@ -48,14 +48,24 @@ On-Camera Lip-Sync: NONE | Post-Prod VO (Premiere): "Built from your feedback." 
 
 ---
 
-## ⚡ Install in 10 Seconds
+## ⚡ Install in 10 sec
 
-**Option A: Automatic CLI Setup (Claude Desktop, Claude Code & Cursor)**
+Choose the installation method that fits your workflow:
+
+### Option A: The Visual Installer (Recommended for non-coders)
+The easiest way to install `nogyaan` as a native Claude Extension:
+1. Go to the [Releases](https://github.com/Gauhar-1/nogyaan/releases) page and download `nogyaan-v2.1.1.mcpb`.
+2. Open your **Claude Desktop App**.
+3. Navigate to **Settings > Extensions** (or Settings > Desktop app > Manage).
+4. Click **Install Extension...** (under Advanced Settings), select your downloaded `.mcpb` file, and click Install.
+*(To use it, open a new chat in Claude and type: "Start a nogyaan brief.")*
+
+### Option B: Automatic CLI Setup (Claude Desktop, Claude Code & Cursor)
 ```bash
 npx nogyaan init
 ```
 
-**Option B: Manual MCP Config (`claude_desktop_config.json` / `.cursor/mcp.json`)**
+### Option C: Manual MCP Config (`claude_desktop_config.json` / `.cursor/mcp.json`)
 ```json
 {
   "mcpServers": {
@@ -65,23 +75,6 @@ npx nogyaan init
     }
   }
 }
-```
-
-**Option C: Local Development Setup**
-
-Clone the repository and build:
-
-```bash
-git clone https://github.com/Gauhar-1/nogyaan.git
-cd nogyaan
-npm install
-npm run build
-
-# Inject local build into Claude Desktop and Cursor
-node dist/cli.js init --local
-
-# Verify environment & configs
-node dist/cli.js doctor
 ```
 
 ### 💻 CLI Command Reference

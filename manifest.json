@@ -1,0 +1,27 @@
+{
+  "manifest_version": "0.2",
+  "name": "nogyaan",
+  "version": "2.1.1",
+  "description": "State-Pruned Video Director & Storyboard MCP Server with DAG story branching, studio workbench, and diffusion model prompt compilation.",
+  "author": {
+    "name": "MD Gohar Khan",
+    "url": "https://gauhar.vercel.app"
+  },
+  "icon": "assets/char.png",
+  "server": {
+    "type": "node",
+    "entry_point": "./dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/./dist/index.js"
+      ],
+      "env": {}
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gauhar-1/nogyaan"
+  }
+}
